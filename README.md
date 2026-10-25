@@ -22,9 +22,11 @@ The product is the record, not the model call.
 ```
 browser ──POST /api/analyze──▶ local server ──▶ YouCam API
    │                              │
-   │                              ├─ POST /v2.0/file            (upload image, get file_id)
-   │                              ├─ POST /v2.0/task/skin-analysis  (src_file_id + dst_actions)
-   │                              └─ GET  /v2.0/task/skin-analysis/{task_id}  (poll until success)
+   │                              ├─ POST /s2s/v2.0/file              (returns file_id + presigned S3 PUT)
+   │                              ├─ PUT  <presigned S3 URL>           (binary upload, same bytes)
+   │                              ├─ POST /s2s/v2.0/task/skin-analysis (src_file_id + dst_actions)
+   │                              └─ GET  /s2s/v2.0/task/skin-analysis/{task_id}  (poll until success,
+   │                                   then download the results ZIP and read score_info.json)
    │
    └─ stores { timestamp, scores, thumbnail } in localStorage
 ```
