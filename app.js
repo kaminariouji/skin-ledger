@@ -3,7 +3,9 @@ const KEY_RECORDS = 'skinledger.records.v4';
 const KEY_CHANGES = 'skinledger.changes.v4';
 const KEY_FACTORS = 'skinledger.factors.v1';
 const KEY_THEME = 'skinledger.theme';
-const STAGE = 440, OUT = 1024;
+const STAGE = 440, OUT = 1024, OUT_HD = 2048;
+let tier = 'sd';
+try { const t = localStorage.getItem('skinledger.tier'); if (t === 'hd' || t === 'sd') tier = t; } catch (e) {}
 
 const stage = $('stage'), shot = $('shot'), guide = $('guide'), empty = $('empty');
 const zoomEl = $('zoom'), zoomOut = $('zoomOut'), hint = $('hint');
@@ -45,6 +47,18 @@ document.querySelectorAll('[data-theme-set]').forEach((b) => b.addEventListener(
 }));
 paintTheme(document.documentElement.getAttribute('data-theme') || 'system');
 
+/* depth switch */
+function paintTier() {
+  document.querySelectorAll('[data-tier]').forEach((b) => b.setAttribute('aria-pressed', String(b.getAttribute('data-tier') === tier)));
+}
+document.querySelectorAll('[data-tier]').forEach((b) => b.addEventListener('click', () => {
+  tier = b.getAttribute('data-tier');
+  try { localStorage.setItem('skinledger.tier', tier); } catch (e) {}
+  paintTier();
+  say(tier === 'hd' ? 'HD selected: 16 concerns plus per-region scores, slower and 22 units per scan.' : 'Standard selected: 8 concerns, 16 units per scan.');
+}));
+paintTier();
+
 /* api */
 async function health() {
   try {
@@ -59,9 +73,10 @@ const ERROR_TEXT = {
   error_large_face_angle: 'Your head is turned or tilted too far. Face the camera straight on and try again.',
   error_below_min_image_size: 'That photo is too small to analyse. Use a larger image.',
   error_face_not_found: 'No face found in that photo. Try a clear, front-facing shot.',
-  error_download_image: 'The upload did not reach the analysis service. Try again.'
+  error_download_image: 'The upload did not reach the analysis service. Try again.',
+  image_too_small_hd: 'HD needs a photo at least 2048px on the short side. Use a larger image.'
 };
-const humanError = (c) => ERROR_TEXT[c] || 'The analysis service rejected that photo. Try a straight-on, well-lit shot with your face filling the circle.';
+const humanError = (c, body) => (c === 'image_too_small_hd' && body && body.message) ? String(body.message) : (ERROR_TEXT[c] || 'The analysis service rejected that photo. Try a straight-on, well-lit shot with your face filling the circle.');
 
 /* framing */
 const baseScale = () => Math.max(STAGE / shot.naturalWidth, STAGE / shot.naturalHeight);
@@ -75,13 +90,14 @@ function layout() {
   shot.style.top = (STAGE / 2 + pan.y - dh / 2) + 'px';
   zoomOut.textContent = zoom.toFixed(2) + '\u00d7';
 }
-function cropDataUrl() {
+function cropDataUrl(size) {
   const s = baseScale() * zoom, dw = shot.naturalWidth * s, dh = shot.naturalHeight * s;
   const left = STAGE / 2 + pan.x - dw / 2, top = STAGE / 2 + pan.y - dh / 2, sw = STAGE / s;
-  const c = document.createElement('canvas'); c.width = OUT; c.height = OUT;
-  c.getContext('2d').drawImage(shot, -left / s, -top / s, sw, sw, 0, 0, OUT, OUT);
+  const c = document.createElement('canvas'); c.width = size || OUT; c.height = size || OUT;
+  c.getContext('2d').drawImage(shot, -left / s, -top / s, sw, sw, 0, 0, size || OUT, size || OUT);
   return c.toDataURL('image/jpeg', 0.92);
 }
+function cropForTier() { return cropDataUrl(tier === 'hd' ? OUT_HD : OUT); }
 function loadImage(url) {
   return new Promise((res, rej) => {
     shot.onload = () => {
@@ -296,22 +312,22 @@ function stopProgress() {
 }
 
 /* analysis */
-async function post(image) {
-  const r = await fetch('/api/analyze', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ image }) });
+async function post(image, useTier) {
+  const r = await fetch('/api/analyze', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ image, tier: useTier || 'sd' }) });
   let j = {}; try { j = await r.json(); } catch (e) {}
   return { ok: r.ok, body: j };
 }
 async function analyseFramed(label) {
   startProgress(label);
-  let res = await post(cropDataUrl());
+  let res = await post(cropForTier(), tier);
   if (!res.ok && res.body && res.body.error === 'error_src_face_too_small' && !autoReframed) {
     autoReframed = true;
     progressStage.textContent = 'Reframing';
     zoom = clamp(zoom * 1.3, 1, 3.2); zoomEl.value = String(Math.round(zoom * 100)); layout();
     await new Promise((r) => setTimeout(r, 350));
-    res = await post(cropDataUrl());
+    res = await post(cropForTier(), tier);
   }
-  if (!res.ok) { const e = new Error(humanError(res.body && res.body.error)); e.code = res.body && res.body.error; throw e; }
+  if (!res.ok) { const e = new Error(humanError(res.body && res.body.error, res.body)); e.code = res.body && res.body.error; throw e; }
   const scores = {};
   Object.keys(res.body.results || {}).forEach((k) => {
     const v = res.body.results[k];
@@ -319,10 +335,24 @@ async function analyseFramed(label) {
     if (Number.isFinite(n)) scores[k] = n;
   });
   if (!Object.keys(scores).length) throw new Error('The API returned no scores.');
-  return { scores, mock: !!res.body.mock, assets: res.body.assets || null };
+  return {
+    scores, mock: !!res.body.mock, assets: res.body.assets || null,
+    tier: res.body.tier || tier,
+    regions: Array.isArray(res.body.regions) ? res.body.regions : [],
+    skinType: res.body.skin_type || null,
+    skinAge: Number.isFinite(res.body.skin_age) ? res.body.skin_age : null,
+    overall: Number.isFinite(res.body.overall) ? res.body.overall : null
+  };
 }
-async function commit(scores, mock, framed, assets) {
-  records.push({ ts: Date.now(), scores, thumb: await downscale(framed, 96), img: await downscale(framed, 512), assets, mock });
+async function commit(scores, mock, framed, assets, extra) {
+  records.push({
+    ts: Date.now(), scores, thumb: await downscale(framed, 96), img: await downscale(framed, 512), assets, mock,
+    tier: (extra && extra.tier) || 'sd',
+    regions: (extra && extra.regions) || [],
+    skinType: (extra && extra.skinType) || null,
+    skinAge: (extra && extra.skinAge) || null,
+    overall: (extra && extra.overall) || null
+  });
   saveRecords();
   baselineIdx = 0;
   render();
@@ -332,9 +362,9 @@ $('run').addEventListener('click', async () => {
   busy = true; const btn = $('run'); btn.disabled = true; btn.textContent = 'Scanning';
   say('Sending the framed square to YouCam Skin AI.');
   try {
-    const framed = cropDataUrl();
+    const framed = cropForTier();
     const out = await analyseFramed();
-    await commit(out.scores, out.mock, framed, out.assets);
+    await commit(out.scores, out.mock, framed, out.assets, out);
     say(autoReframed ? 'Face was too small, so I zoomed in and retried. Saved.' : 'Saved. Run another scan after you change something to get a real delta.', 'good');
     $('today').scrollIntoView({ block: 'start' });
   } catch (e) { say(e.message, 'error'); }
@@ -355,9 +385,9 @@ async function runQueue() {
       const label = 'Photo ' + (done + failed + 1) + ' of ' + pending.length;
       try {
         await loadImage(item.dataUrl);
-        const framed = cropDataUrl();
+        const framed = cropForTier();
         const out = await analyseFramed(label);
-        await commit(out.scores, out.mock, framed, out.assets);
+        await commit(out.scores, out.mock, framed, out.assets, out);
         item.status = 'done'; item.scores = out.scores; done++;
       } catch (e) { item.status = 'error'; item.error = e.message; failed++; }
       stopProgress(); renderQueue(); render();
@@ -450,8 +480,32 @@ function render() {
     sel.disabled = records.length < 2;
     renderDelta(); renderMap(); renderBA();
   }
+  renderReport();
   renderCompare(); renderAttrib(); renderCorr(); renderHistory();
   $('changes').innerHTML = changes.slice().reverse().map((c) => '<li>' + fmt(c.ts) + ' \u2014 ' + escapeHtml(c.what) + '</li>').join('');
+}
+function renderReport() {
+  const last = records[records.length - 1];
+  const has = !!(last && last.regions && last.regions.length);
+  $('reportCard').hidden = !has;
+  if (!has) return;
+  $('reportStamp').textContent = (last.tier === 'hd' ? 'HD' : 'Standard') + ' \u00b7 ' + last.regions.length + ' regional readings';
+  const stats = [];
+  if (Number.isFinite(last.overall)) stats.push(['Overall', Math.round(last.overall)]);
+  if (Number.isFinite(last.skinAge)) stats.push(['Skin age', Math.round(last.skinAge)]);
+  if (last.skinType) stats.push(['Skin type', last.skinType]);
+  $('reportTop').innerHTML = stats.map((s) => '<div class="stat"><span class="k">' + s[0] + '</span><span class="v">' + s[1] + '</span></div>').join('');
+  const byType = {};
+  last.regions.forEach((r) => { (byType[r.type] = byType[r.type] || []).push(r); });
+  const rows = Object.keys(byType).map((t) => {
+    const whole = byType[t].filter((r) => r.region === 'whole')[0];
+    const score = whole ? whole.score : last.scores[t];
+    return { t, score: Number.isFinite(score) ? score : -1, regions: byType[t].filter((r) => r.region !== 'whole') };
+  }).sort((a, b) => a.score - b.score);
+  $('reportTable').innerHTML = rows.map((row) => {
+    const chips = row.regions.length ? '<span class="rregions">' + row.regions.map((r) => '<span class="rchip">' + pretty(r.region) + ' <b>' + Math.round(r.score) + '</b></span>').join('') + '</span>' : '';
+    return '<div class="rrow"><span class="rname">' + pretty(row.t) + '</span><span class="rscore">' + (row.score >= 0 ? Math.round(row.score) : '\u2014') + '</span>' + chips + '</div>';
+  }).join('');
 }
 function renderDelta() {
   const last = records[records.length - 1], base = records[baselineIdx] || records[0];
@@ -552,7 +606,7 @@ function renderHistory() {
         const d = r.scores[k] - p;
         if (Math.abs(d) < 3) flat++; else if (d > 0) up++; else down++;
       });
-      sum = '<b>' + up + '</b> up \u00b7 <b>' + down + '</b> down \u00b7 ' + flat + ' flat';
+      sum = '<span class="sum-up"><b>' + up + '</b> up</span> \u00b7 <span class="sum-down"><b>' + down + '</b> down</span> \u00b7 <span class="sum-flat">' + flat + ' flat</span>';
     }
     const bars = Object.keys(r.scores).sort().map((k) => '<i class="on" style="height:' + Math.max(3, Math.round((r.scores[k] / 100) * 26)) + 'px"></i>').join('');
     return '<div class="hrow"><span class="hdate">' + day(r.ts) + '</span>' + (r.thumb ? '<img src="' + r.thumb + '" alt="" />' : '<span></span>') +
@@ -649,6 +703,48 @@ $('chatForm').addEventListener('submit', (e) => {
 const QUICK = ['Explain today\u2019s record in plain language', 'Which change is actually real?', 'What should I change next?'];
 $('chatQuick').innerHTML = QUICK.map((q) => '<button type="button" class="chip" data-q="' + escapeHtml(q) + '">' + escapeHtml(q) + '</button>').join('');
 document.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => ask(b.getAttribute('data-q'))));
+
+/* quick nav (mobile) */
+(function quickNav() {
+  const nav = $('quickNav');
+  if (!nav) return;
+  const links = Array.from(nav.querySelectorAll('[data-goto]'));
+  const items = links.map((link) => ({ link, el: $(link.getAttribute('data-goto')) })).filter((x) => x.el);
+
+  links.forEach((link) => link.addEventListener('click', (e) => {
+    const el = $(link.getAttribute('data-goto'));
+    e.preventDefault();
+    if (!el || el.hidden) return;
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) { el.scrollIntoView(); }
+  }));
+
+  const top = $('quickTop');
+  if (top) top.addEventListener('click', () => {
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (err) { window.scrollTo(0, 0); }
+  });
+
+  if (!items.length || !('IntersectionObserver' in window)) return;
+
+  function mark() {
+    const probe = window.innerHeight * 0.32;
+    let best = null, bestDist = Infinity;
+    items.forEach(({ el }) => {
+      if (el.hidden) return;
+      const box = el.getBoundingClientRect();
+      if (box.bottom < 90 || box.top > window.innerHeight - 90) return;
+      const dist = Math.abs(box.top - probe);
+      if (dist < bestDist) { bestDist = dist; best = el; }
+    });
+    items.forEach(({ link, el }) => {
+      if (el === best) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+  }
+
+  const io = new IntersectionObserver(mark, { rootMargin: '-72px 0px -110px 0px', threshold: [0, 0.25, 0.5, 1] });
+  items.forEach(({ el }) => io.observe(el));
+  mark();
+})();
 
 /* ocr */
 const ACTIVES = ['niacinamide', 'retinol', 'salicylic acid', 'hyaluronic acid', 'ascorbic acid', 'vitamin c', 'glycolic acid', 'azelaic acid', 'ceramide', 'benzoyl peroxide', 'tranexamic acid', 'arbutin', 'lactic acid', 'panthenol', 'squalane', 'peptide', 'zinc oxide', 'urea'];

@@ -15,6 +15,7 @@ Skin Ledger turns the YouCam Skin AI API into a longitudinal record:
 - **Dated scans with a real baseline.** Every analysis is stored with a timestamp. Each concern is compared against a scan you choose, not against a population average, so device and lighting differences stop masquerading as progress.
 - **Noise is labelled.** Moves under 3 points are shown as flat. The app refuses to invent improvement.
 - **Heatmap from the model's own masks.** The Skin AI task returns one mask PNG per concern inside the results ZIP. The app renders those masks over the analysed image, so you can see *where* the model sees redness or acne rather than only a number. Nothing is drawn by the app.
+- **Two depths, one ledger.** Standard runs the eight SD concerns. HD runs all sixteen v2.1 concerns and returns 24 regional readings - wrinkle split across forehead, glabellar, crowfeet, periocular, nasolabial, marionette and whole, pore across forehead, nose and cheek - plus an overall score, a skin age and a skin type. The report table sorts concerns worst-first and prints the regional spread beside each whole-face score, so a good average with one bad region is visible instead of hidden.
 - **Baseline / today split slider.** A draggable divider compares the first scan and the latest side by side, which is the comparison people actually make by eye — except here it is aligned.
 - **Batch scan queue.** Drop several photos at once; they are scanned one by one with per-item status. Rejected frames fail individually and report why.
 - **Live camera with guardrails.** Capture in-app with a translucent ghost of your last baseline over the viewfinder - opacity on a 0-60% slider, a Ghost toggle, and the baseline date printed on the control bar, so you line your face up against the exact same frame you will be compared with - plus live checks for exposure, focus and whether a face is filling the oval. The shutter stays disabled until light and framing pass.
@@ -30,6 +31,8 @@ A dependency-free Node server proxies the YouCam API so the key never reaches th
 3. `POST /s2s/v2.0/task/skin-analysis` with `src_file_id` and eight `dst_actions` returns a `task_id`.
 4. `GET /s2s/v2.0/task/skin-analysis/{task_id}` is polled until `task_status` is `success`. The result is a ZIP holding `score_info.json` and one mask PNG per concern; the server unzips it, serves the masks as assets, and returns normalised scores.
 
+5. HD is a different task path: `POST /s2s/v2.1/task/skin-analysis` with sixteen `hd_*` actions and `format: "json"` in the body. Without that field the service answers in the zip shape and the per-region array is simply absent - which reads as a successful task with no output. HD also rejects frames under 2048 px, so the client renders its crop at 2048 when HD is selected and the server returns `image_too_small_hd` with the measured size when it is smaller.
+
 The client stores records in `localStorage`, renders deltas, sparklines and the split slider, and recolours each mask into a heatmap ramp on a canvas. A deterministic mock mode lets the interface run without a key.
 
 Two failure modes shaped the UI. The model rejects frames where the face fills less than 60% of the width, so the app has a zoom/pan framing stage and, on `error_src_face_too_small`, zooms 1.3x and retries once by itself. And the analysis worker occasionally cannot fetch the object we just uploaded, so the server retries that specific error once.
@@ -40,7 +43,7 @@ The hard part was not the API call. It was deciding what a score is allowed to m
 The second challenge was framing. A longitudinal product is only as good as the repeatability of its input, which is why zoom, the ghost overlay and the exposure checks exist at all.
 
 ## What we learned
-Skin AI is fast — roughly five seconds end to end — and the eight concern scores are stable enough to compare across scans when the input conditions are consistent. The masks are the most under-used part of the API: they turn a number into a location.
+Skin AI is fast — roughly five seconds end to end — and the eight concern scores are stable enough to compare across scans when the input conditions are consistent. The masks are the most under-used part of the API: they turn a number into a location. HD costs 22 units per image against 16 for the eight SD concerns and needs a 2048 px frame; those two numbers decide when HD is worth asking for.
 
 ## What's next
 - **White-label for brands.** A skincare line embeds the same ledger: customers scan before and after a product, and the brand gets dated, per-concern deltas instead of a before/after photo and a claim. That is a defensible B2B product because the value is the record, not the model call.

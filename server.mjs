@@ -6,8 +6,14 @@ import { extname, join, normalize } from 'node:path';
 const PORT = Number(process.env.PORT || 4173);
 const MOCK = process.env.MOCK === '1' || !process.env.YOUCAM_API_KEY;
 const KEY = process.env.YOUCAM_API_KEY || '';
-const BASE = 'https://yce-api-01.makeupar.com';
+const BASE = process.env.YOUCAM_BASE || 'https://yce-api-01.makeupar.com';
 const ACTIONS = ['wrinkle', 'pore', 'texture', 'acne', 'oiliness', 'redness', 'radiance', 'moisture'];
+const HD_ACTIONS = ['hd_wrinkle', 'hd_pore', 'hd_texture', 'hd_acne', 'hd_redness', 'hd_oiliness', 'hd_moisture', 'hd_radiance', 'hd_firmness', 'hd_dark_circle', 'hd_eye_bag', 'hd_tear_trough', 'hd_droopy_upper_eyelid', 'hd_droopy_lower_eyelid', 'hd_age_spot', 'hd_skin_type'];
+// HD rejects anything under 2048px on the short side; the client upscales when we tell it to.
+const HD_MIN_PX = 2000;
+// HD lives on the 2.1 task path; SD stays on 2.0. Same body, different version.
+const SD_TASK_PATH = '/s2s/v2.0/task/skin-analysis';
+const HD_TASK_PATH = '/s2s/v2.1/task/skin-analysis';
 
 const ASSETS = new Map();
 const MAX_ASSETS = 24;
@@ -57,7 +63,96 @@ function unzipEntries(buf) {
   return out;
 }
 
-async function analyseOnce(buffer, contentType) {
+// Dimensions straight from the JPEG/PNG header: the repo stays dependency-free.
+function imageSize(buf) {
+  if (!buf || buf.length < 24) return null;
+  if (buf[0] === 0xff && buf[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < buf.length) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      let marker = buf[i + 1];
+      while (marker === 0xff) { i++; marker = buf[i + 1]; }
+      if (marker === 0x01 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd8)) { i += 2; continue; }
+      const len = buf.readUInt16BE(i + 2);
+      const sof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+      if (sof) return { width: buf.readUInt16BE(i + 7), height: buf.readUInt16BE(i + 5) };
+      if (marker === 0xda) return null;
+      i += 2 + len;
+    }
+    return null;
+  }
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  }
+  return null;
+}
+
+// HD returns one element per region; the app wants one number per concern plus the full map.
+function parseHdOutput(output) {
+  const regions = [];
+  const maskByType = new Map();
+  let skinType = null, skinAge = null, overall = null, imageUrl = null;
+  for (const e of Array.isArray(output) ? output : []) {
+    const type = String((e && e.type) || '');
+    if (!type) continue;
+    if (type === 'all') {
+      const n = Number(e.score);
+      if (Number.isFinite(n)) overall = Math.round(n * 100) / 100;
+      continue;
+    }
+    if (type === 'skin_age') {
+      const n = Number(e.score);
+      if (Number.isFinite(n)) skinAge = Math.round(n);
+      continue;
+    }
+    if (type === 'resize_image') {
+      imageUrl = (Array.isArray(e.mask_urls) && e.mask_urls[0]) || e.url || null;
+      continue;
+    }
+    if (type === 'hd_skin_type') {
+      if (skinType === null && (e.region === 'whole' || !e.region) && e.skin_type) skinType = String(e.skin_type);
+      continue;
+    }
+    const n = Number(e.ui_score ?? e.raw_score);
+    if (!Number.isFinite(n)) continue;
+    const name = type.replace(/^hd_/, '');
+    const region = String(e.region || 'whole');
+    const score = Math.round(n);
+    regions.push({ type: name, region, score });
+    const mask = (Array.isArray(e.mask_urls) && e.mask_urls[0]) || null;
+    if (mask && (!maskByType.has(name) || region === 'whole')) maskByType.set(name, mask);
+  }
+  regions.sort((a, b) => a.type.localeCompare(b.type) || a.region.localeCompare(b.region));
+  const results = {};
+  for (const r of regions) if (results[r.type] === undefined) results[r.type] = r.score;
+  for (const r of regions) if (r.region === 'whole') results[r.type] = r.score;
+  return { results, regions, skin_type: skinType, skin_age: skinAge, overall, maskByType, imageUrl };
+}
+
+// HD masks and the resized photo are short-lived S3 URLs: pull them in so /api/asset can serve them.
+async function storeHdAssets(parsed) {
+  const files = new Map();
+  const grab = (url, name) => fetch(url, { signal: AbortSignal.timeout(20000) })
+    .then((r) => (r.ok ? r.arrayBuffer() : null))
+    .then((b) => { if (b) files.set(name, Buffer.from(b)); })
+    .catch(() => {});
+  const jobs = [];
+  for (const [name, url] of parsed.maskByType) jobs.push(grab(url, name + '_output.png'));
+  if (parsed.imageUrl) jobs.push(grab(parsed.imageUrl, 'resize_image.jpg'));
+  await Promise.all(jobs);
+  const id = Math.random().toString(36).slice(2, 10);
+  if (files.size) {
+    ASSETS.set(id, files);
+    if (ASSETS.size > MAX_ASSETS) ASSETS.delete(ASSETS.keys().next().value);
+  }
+  const masks = {};
+  for (const name of parsed.maskByType.keys()) {
+    if (files.has(name + '_output.png')) masks[name] = '/api/asset/' + id + '/' + name + '_output.png';
+  }
+  return { id: files.size ? id : null, image: files.has('resize_image.jpg') ? '/api/asset/' + id + '/resize_image.jpg' : null, masks };
+}
+
+async function analyseOnce(buffer, contentType, actions, taskPath) {
   const up = await yce('/s2s/v2.0/file', {
     method: 'POST',
     body: JSON.stringify({
@@ -79,9 +174,12 @@ async function analyseOnce(buffer, contentType) {
   // The analysis worker fetches the object we just wrote; give S3 a beat to make it readable.
   await new Promise((r) => setTimeout(r, 700));
 
-  const task = await yce('/s2s/v2.0/task/skin-analysis', {
+  const body = { src_file_id: file.file_id, dst_actions: actions };
+  // HD only returns the per-region array when asked for json; the default is a zip.
+  if (String(actions[0] || '').startsWith('hd_')) body.format = 'json';
+  const task = await yce(taskPath, {
     method: 'POST',
-    body: JSON.stringify({ src_file_id: file.file_id, dst_actions: ACTIONS }),
+    body: JSON.stringify(body),
   });
   const taskId = task?.data?.task_id;
   if (!taskId) throw new Error('no task_id');
@@ -89,7 +187,7 @@ async function analyseOnce(buffer, contentType) {
   let done = null;
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 1500));
-    const poll = await yce('/s2s/v2.0/task/skin-analysis/' + encodeURIComponent(taskId));
+    const poll = await yce(taskPath + '/' + encodeURIComponent(taskId));
     const status = poll?.data?.task_status;
     if (status === 'success') { done = poll; break; }
     if (status === 'error') { const e = new Error('task failed'); e.code = poll?.data?.error || 'error_unknown'; throw e; }
@@ -98,11 +196,13 @@ async function analyseOnce(buffer, contentType) {
   return { done, taskId };
 }
 
-async function liveAnalysis(buffer, contentType) {
+async function liveAnalysis(buffer, contentType, tier) {
+  const actions = tier === 'hd' ? HD_ACTIONS : ACTIONS;
+  const taskPath = tier === 'hd' ? HD_TASK_PATH : SD_TASK_PATH;
   let attempt = null;
   for (let i = 0; i < 2; i++) {
     try {
-      attempt = await analyseOnce(buffer, contentType);
+      attempt = await analyseOnce(buffer, contentType, actions, taskPath);
       break;
     } catch (e) {
       // A failed S3 fetch is infrastructure, not the photo: retry exactly once.
@@ -111,6 +211,25 @@ async function liveAnalysis(buffer, contentType) {
     }
   }
   const { done, taskId } = attempt;
+
+  if (tier === 'hd') {
+    const output = done?.data?.results?.output;
+    if (!Array.isArray(output)) throw new Error('no output in results');
+    const parsed = parseHdOutput(output);
+    const assets = await storeHdAssets(parsed);
+    return {
+      results: parsed.results,
+      regions: parsed.regions,
+      skin_type: parsed.skin_type,
+      skin_age: parsed.skin_age,
+      overall: parsed.overall,
+      tier: 'hd',
+      mock: false,
+      taskId,
+      assets,
+    };
+  }
+
   const url = done?.data?.results?.url;
   if (!url) throw new Error('no results url');
   const zip = Buffer.from(await (await fetch(url)).arrayBuffer());
@@ -136,20 +255,46 @@ async function liveAnalysis(buffer, contentType) {
   const masks = {};
   for (const a of ACTIONS) if (files.has(a + '_output.png')) masks[a] = '/api/asset/' + id + '/' + a + '_output.png';
   const image = files.has('resize_image.jpg') ? '/api/asset/' + id + '/resize_image.jpg' : null;
-  return { results, mock: false, taskId, assets: { id, image, masks } };
+  return { results, regions: null, skin_type: null, skin_age: null, overall: null, tier: 'sd', mock: false, taskId, assets: { id, image, masks } };
 }
 
 // Deterministic mock so the demo is stable and the UI can be developed without a key.
-function mockAnalysis(seed) {
+function mockAnalysis(seed, tier) {
   let h = 0;
   for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) % 100000;
   const rnd = (i) => ((h >> i) % 37) / 37;
+  if (tier === 'hd') {
+    const names = HD_ACTIONS.map((a) => a.replace(/^hd_/, '')).filter((a) => a !== 'skin_type');
+    const results = {};
+    const regions = [];
+    names.forEach((name, i) => {
+      const score = Math.round(55 + rnd(i + 1) * 42);
+      results[name] = score;
+      regions.push({ type: name, region: 'whole', score });
+      const extra = name === 'wrinkle' ? ['forehead', 'nasolabial'] : name === 'pore' ? ['forehead', 'nose', 'cheek'] : [];
+      for (const region of extra) regions.push({ type: name, region, score: Math.max(20, score - Math.round(rnd(i + region.length) * 18)) });
+    });
+    regions.sort((a, b) => a.type.localeCompare(b.type) || a.region.localeCompare(b.region));
+    const mean = names.reduce((sum, n) => sum + results[n], 0) / names.length;
+    const types = ['Normal', 'Dry', 'Oily'];
+    return {
+      results,
+      regions,
+      skin_type: types[Math.floor(rnd(3) * 3) % 3],
+      skin_age: 24 + Math.round(rnd(2) * 12),
+      overall: Math.round(mean * 100) / 100,
+      tier: 'hd',
+      mock: true,
+      taskId: 'mock-hd',
+      assets: { id: null, image: null, masks: {} },
+    };
+  }
   const out = {};
   ACTIONS.forEach((a, i) => {
     const score = Math.round(52 + rnd(i + 1) * 40);
     out[a] = { score };
   });
-  return { results: out, mock: true };
+  return { results: out, regions: null, skin_type: null, skin_age: null, overall: null, tier: 'sd', mock: true, taskId: 'mock', assets: null };
 }
 
 function buildBrief(records, changes) {
@@ -213,24 +358,39 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
 
     if (url.pathname === '/api/health') {
-      return json(res, 200, { ok: true, mode: MOCK ? 'mock' : 'live', actions: ACTIONS });
+      return json(res, 200, { ok: true, mode: MOCK ? 'mock' : 'live', actions: ACTIONS, tiers: ['sd', 'hd'] });
     }
 
-    // Accepts a base64 data URL, returns normalised scores.
-    if (url.pathname === '/api/analyze' && req.method === 'POST') {
+    // Accepts a base64 data URL, returns normalised scores. /api/analyse is the same endpoint under its British spelling.
+    if ((url.pathname === '/api/analyze' || url.pathname === '/api/analyse') && req.method === 'POST') {
       const raw = await readBody(req);
       if (raw.length > 12 * 1024 * 1024) return json(res, 413, { error: 'image too large (max 12MB)' });
       let payload = {};
       try { payload = JSON.parse(raw.toString('utf8')); } catch {}
       const image = String(payload.image || '');
       if (!image.startsWith('data:image/')) return json(res, 400, { error: 'image must be a data URL' });
+      const tier = payload.tier === 'hd' ? 'hd' : 'sd';
 
-      if (MOCK) return json(res, 200, mockAnalysis(image.slice(0, 400)));
+      if (MOCK) return json(res, 200, mockAnalysis(image.slice(0, 400) + tier, tier));
 
       const header = image.slice(0, image.indexOf(','));
       const contentType = header.slice(5, header.indexOf(';')) || 'image/jpeg';
       const buffer = Buffer.from(image.slice(image.indexOf(',') + 1), 'base64');
-      const out = await liveAnalysis(buffer, contentType);
+
+      if (tier === 'hd') {
+        const dim = imageSize(buffer);
+        if (dim && Math.min(dim.width, dim.height) < HD_MIN_PX) {
+          return json(res, 422, {
+            error: 'image_too_small_hd',
+            message: 'HD Skin AI needs at least 2048px on the short side. This photo is ' + dim.width + 'x' + dim.height + '. Upscale it and try again.',
+            width: dim.width,
+            height: dim.height,
+            minSize: 2048,
+          });
+        }
+      }
+
+      const out = await liveAnalysis(buffer, contentType, tier);
       return json(res, 200, out);
     }
 
@@ -273,6 +433,9 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
     res.end(buf);
   } catch (e) {
+    if (e && e.code === 'error_below_min_image_size') {
+      return json(res, 422, { error: 'image_too_small_hd', message: 'HD Skin AI needs at least 2048px on the short side. Upscale the photo and try again.', minSize: 2048 });
+    }
     if (e && e.code) return json(res, 422, { error: e.code, message: 'the analysis service rejected the image' });
     json(res, 500, { error: String(e.message || e).slice(0, 300) });
   }

@@ -16,10 +16,10 @@
   <div class="bar-right">
     <span id="status" class="status">checking API</span>
     <span class="rule-dot">/</span>
-    <div class="theme" role="group" aria-label="Colour theme">
-      <button type="button" data-theme-set="light">Light</button>
-      <button type="button" data-theme-set="dark">Dark</button>
-      <button type="button" data-theme-set="system">Auto</button>
+    <div class="segmented" role="group" aria-label="Colour theme">
+      <button type="button" data-theme-set="light" aria-pressed="false">Light</button>
+      <button type="button" data-theme-set="dark" aria-pressed="false">Dark</button>
+      <button type="button" data-theme-set="system" aria-pressed="false">Auto</button>
     </div>
   </div>
 </header>
@@ -78,6 +78,10 @@
         </label>
         <button type="button" id="pick" class="btn ghost">Choose photo</button>
         <button type="button" id="camOpen" class="btn ghost">Use camera</button>
+<div class="tier" role="group" aria-label="Analysis depth">
+          <button type="button" data-tier="sd" aria-pressed="true">Standard 8</button>
+          <button type="button" data-tier="hd" aria-pressed="false">HD 16</button>
+        </div>
         <button type="button" id="run" class="btn solid" disabled>Run scan</button>
       </div>
 
@@ -124,6 +128,16 @@
       <span class="stamp" id="stamp"></span>
     </div>
     <div class="scores" id="scores"></div>
+  </section>
+
+  <section class="record" id="reportCard" hidden>
+    <div class="record-head">
+      <h2>Full report</h2>
+      <span class="stamp" id="reportStamp"></span>
+    </div>
+    <div class="report-top" id="reportTop"></div>
+    <div class="rtable" id="reportTable"></div>
+    <p class="fine">Region scores come from the same response as the whole-face score. History and deltas use the whole-face score only.</p>
   </section>
 
   <section class="split" id="split" hidden>
@@ -260,6 +274,15 @@
 </footer>
 
 <input type="file" id="ocrFile" accept="image/*" hidden />
+
+<nav class="quicknav" id="quickNav" aria-label="Section shortcuts">
+  <a href="#capture" data-goto="capture">Capture</a>
+  <a href="#compareCard" data-goto="compareCard">Compare</a>
+  <a href="#chatCard" data-goto="chatCard">Ask</a>
+  <a href="#historyCard" data-goto="historyCard">History</a>
+  <button type="button" class="qn-top" id="quickTop" aria-label="Back to top"><span aria-hidden="true">↑</span></button>
+</nav>
+
 <script src="/app.js"></script>
 </body>
 </html>
