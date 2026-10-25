@@ -17,6 +17,15 @@ Skin Ledger keeps every scan as a dated record, compares each one against your o
 
 The product is the record, not the model call.
 
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Baseline against today](shots/01-compare.png) | ![What changed and what followed](shots/03-attribution.png) |
+| ![Where the model sees it](shots/04-factors.png) | ![Label scan](shots/06-label.png) |
+
+The label screenshot is the label reader writing a full composition into the change log.
+
 ## How it works
 
 ```
