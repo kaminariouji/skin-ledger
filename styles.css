@@ -381,16 +381,25 @@ input[type="range"]:disabled { opacity: .35; cursor: default; }
 }
 .cam-oval {
   position: absolute; left: 50%; top: 50%; width: 70%; height: 84%;
-  transform: translate(-50%, -50%); border: 1px dashed rgba(255, 255, 255, .55); border-radius: 50%;
-  pointer-events: none;
+  transform: translate(-50%, -50%); border: 2px dashed rgba(255, 255, 255, .62); border-radius: 50%;
+  pointer-events: none; transition: border-color .18s ease, box-shadow .18s ease;
 }
-.cam-badges { position: absolute; left: 10px; bottom: 58px; display: flex; gap: 6px; }
+.cam-oval.ok {
+  border-style: solid; border-color: rgba(111, 202, 168, .95);
+  box-shadow: 0 0 0 2px rgba(111, 202, 168, .16), 0 0 26px rgba(111, 202, 168, .28);
+}
+.cam-oval.bad {
+  border-style: solid; border-color: rgba(224, 131, 138, .95);
+  box-shadow: 0 0 0 2px rgba(224, 131, 138, .14);
+}
+.cam-badges { position: absolute; left: 50%; transform: translateX(-50%); bottom: 74px; display: flex; gap: 6px; justify-content: center; max-width: calc(100% - 20px); }
 .cam-badges span {
-  font: 500 10px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase;
+  font: 500 10px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; flex: 0 0 auto;
   padding: 5px 8px; color: #fff; background: rgba(0, 0, 0, .45); border: 1px solid rgba(255, 255, 255, .25);
 }
 .cam-badges span.ok { border-color: rgba(111, 202, 168, .8); color: #9fe6c9; }
 .cam-badges span.warn { border-color: rgba(224, 131, 138, .8); color: #f0b0b5; }
+.cam-badges span.muted { border-color: rgba(255, 255, 255, .2); color: rgba(255, 255, 255, .6); }
 .cam-actions { position: absolute; left: 0; right: 0; bottom: 12px; display: flex; gap: 8px; justify-content: center; }
 .cam-actions .btn.solid { background: #fff; color: #111; border-color: #fff; }
 .cam-actions .btn.ghost { background: rgba(0, 0, 0, .45); color: #fff; border-color: rgba(255, 255, 255, .35); }

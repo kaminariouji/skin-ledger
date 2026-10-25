@@ -8,6 +8,7 @@ const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const STATIC_ALLOW = /^[a-z0-9][a-z0-9._-]*\.(html|js|css|svg|png|jpg|jpeg|webp|mp4|ico)$/i;
 
 const PORT = Number(process.env.PORT || 4173);
+const LAN = process.env.LAN === '1';
 const MOCK = process.env.MOCK === '1' || !process.env.YOUCAM_API_KEY;
 const KEY = process.env.YOUCAM_API_KEY || '';
 const BASE = process.env.YOUCAM_BASE || 'https://yce-api-01.makeupar.com';
@@ -369,7 +370,9 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     // Local-only: reject DNS-rebinding attempts that reach us under another name.
-    if (!/^(127\.0\.0\.1|localhost):\d+$/.test(String(req.headers.host || ''))) return json(res, 403, { error: 'forbidden host' });
+    const hostHeader = String(req.headers.host || '');
+    const lanHost = LAN && /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)[\d.]+:\d+$/.test(hostHeader);
+    if (!/^(127\.0\.0\.1|localhost):\d+$/.test(hostHeader) && !lanHost) return json(res, 403, { error: 'forbidden host' });
 
     if (url.pathname === '/api/health') {
       return json(res, 200, { ok: true, mode: MOCK ? 'mock' : 'live', actions: ACTIONS, tiers: ['sd', 'hd'] });
@@ -470,6 +473,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log('skin-ledger on http://127.0.0.1:' + PORT + ' (' + (MOCK ? 'mock' : 'live') + ')');
+server.listen(PORT, LAN ? '0.0.0.0' : '127.0.0.1', () => {
+  console.log('skin-ledger on http://' + (LAN ? '0.0.0.0' : '127.0.0.1') + ':' + PORT + ' (' + (MOCK ? 'mock' : 'live') + (LAN ? ', LAN' : '') + ')');
 });

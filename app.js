@@ -17,7 +17,7 @@ let records = load(KEY_RECORDS, []);
 let changes = load(KEY_CHANGES, []);
 let factors = load(KEY_FACTORS, []);
 let queue = [], zoom = 1, pan = { x: 0, y: 0 }, loaded = false;
-let baselineIdx = 0, busy = false, camStream = null, qTimer = null, stageK = 1;
+let baselineIdx = 0, busy = false, camStream = null, qTimer = null, stageK = 1, camFrames = 0, badStreak = 0, lastSig = -1, stillFrames = 0;
 let activeMask = null;
 
 function load(k, f) { try { return JSON.parse(localStorage.getItem(k)) || f; } catch (e) { return f; } }
@@ -236,11 +236,16 @@ function stopCam() {
   cam.hidden = true;
   ghost.hidden = true;
   empty.hidden = loaded;
+  camFrames = 0; badStreak = 0; lastSig = -1; stillFrames = 0;
+  $("camBadges").hidden = true;
+  $("camOval").className = "cam-oval";
 }
 async function openCam() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('This browser has no camera API.', 'error'); return; }
   cam.hidden = false;
   empty.hidden = true;
+  camFrames = 0; badStreak = 0; lastSig = -1; stillFrames = 0;
+  $("camBadges").hidden = true;
   try { stage.scrollIntoView({ block: 'center', behavior: 'instant' }); } catch (e) { stage.scrollIntoView(); }
   setupGhost();
   try {
@@ -255,39 +260,60 @@ async function openCam() {
 }
 function checkQuality() {
   if (!camVideo.videoWidth) return;
-  const w = 72, h = 72;
+  const w = 96, h = 96;
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const ctx = c.getContext('2d');
   ctx.drawImage(camVideo, 0, 0, w, h);
   const d = ctx.getImageData(0, 0, w, h).data;
-  let lum = 0, skin = 0, edge = 0, n = 0;
-  const gray = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) {
+  let lum = 0, skin = 0; const n = w * h;
+  const gray = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
     const r = d[i * 4], g = d[i * 4 + 1], b = d[i * 4 + 2];
     const y = 0.299 * r + 0.587 * g + 0.114 * b;
-    gray[i] = y; lum += y; n++;
+    gray[i] = y; lum += y;
     const cx = i % w, cy = (i / w) | 0;
     const inOval = Math.pow((cx - w / 2) / (w * 0.34), 2) + Math.pow((cy - h / 2) / (h * 0.42), 2) < 1;
     if (inOval && r > 95 && g > 40 && b > 20 && r > g && r > b && Math.abs(r - g) > 12) skin++;
   }
+  // Laplacian variance separates a sharp 96px face (~470) from a 2px-soft one (~11).
+  // The old edge-per-pixel score peaked at 0.31 on a razor-sharp photo, so it always said blurry.
+  let lap = 0, lap2 = 0; const m = (w - 2) * (h - 2);
   for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
     const i = y * w + x;
-    edge += Math.abs(4 * gray[i] - gray[i - 1] - gray[i + 1] - gray[i - w] - gray[i + w]);
+    const l = 4 * gray[i] - gray[i - 1] - gray[i + 1] - gray[i - w] - gray[i + w];
+    lap += l; lap2 += l * l;
   }
-  lum = lum / n; const sharp = edge / (n * 40); const skinRatio = skin / n;
+  const lapVar = lap2 / m - Math.pow(lap / m, 2);
+  lum = lum / n; const skinRatio = skin / n;
   const lightOk = lum > 55 && lum < 205;
-  const focusOk = sharp > 1.6;
+  const focusJudge = lum > 45;
+  const focusOk = focusJudge && lapVar > 40;
   const frameOk = skinRatio > 0.18;
+
+  // Nothing is judged until the sensor has settled: the first frames are black while exposure ramps.
+  // A frozen track (covered lens, camera held by another app) must not be judged as a bad face.
+  let sig = 0; for (let i = 0; i < n; i += 13) sig += gray[i];
+  if (Math.abs(sig - lastSig) < 1) stillFrames++; else stillFrames = 0;
+  lastSig = sig;
+  camFrames++;
+  if (camFrames <= 3) { $('camShot').disabled = true; return; }
+  if (stillFrames >= 3 && lum < 40) { $('camBadges').hidden = true; $('camShot').disabled = true; $('camOval').className = 'cam-oval'; return; }
+  $('camBadges').hidden = false;
   setBadge('light', lightOk, lum < 55 ? 'too dark' : lum > 205 ? 'too bright' : 'light ok');
-  setBadge('focus', focusOk, focusOk ? 'focus ok' : 'blurry');
+  if (!focusJudge) setBadge('focus', false, 'low light', true);
+  else setBadge('focus', focusOk, focusOk ? 'focus ok' : 'soft focus');
   setBadge('frame', frameOk, frameOk ? 'face in frame' : 'move closer');
+  const oval = $('camOval');
+  if (!lightOk) { oval.className = 'cam-oval'; badStreak = 0; }
+  else if (frameOk) { oval.className = 'cam-oval ok'; badStreak = 0; }
+  else { badStreak++; oval.className = 'cam-oval' + (badStreak >= 3 ? ' bad' : ''); }
   $('camShot').disabled = !(lightOk && frameOk);
 }
-function setBadge(k, ok, text) {
+function setBadge(k, ok, text, muted) {
   const el = document.querySelector('[data-b="' + k + '"]');
   if (!el) return;
   el.textContent = text;
-  el.className = ok ? 'ok' : 'warn';
+  el.className = muted ? 'muted' : ok ? 'ok' : 'warn';
 }
 $('camOpen').addEventListener('click', openCam);
 $('ghostToggle').addEventListener('click', () => {
