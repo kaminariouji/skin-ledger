@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Skin Ledger — dated, comparable skin records</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="dot"></span>
+    <strong>Skin Ledger</strong>
+    <span class="tag">powered by YouCam Skin AI</span>
+  </div>
+  <div class="status" id="status">checking API…</div>
+</header>
+
+<main>
+  <section class="hero">
+    <h1>Your skin, on the record.</h1>
+    <p class="sub">Most skin apps show you a score and forget it. Skin Ledger keeps every scan dated, comparable and attributable — so you can tell whether the thing you changed actually worked.</p>
+
+    <div class="capture">
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept="image/*" hidden />
+        <span class="drop-title">Drop a selfie, or click to choose</span>
+        <span class="drop-sub">Front-facing, even light, no makeup. Nothing leaves this machine except the image you pick.</span>
+      </label>
+      <div class="preview" id="preview" hidden>
+        <img id="shot" alt="Selected selfie" />
+        <button class="ghost" id="clear">Choose another</button>
+      </div>
+      <button class="primary" id="run" disabled>Run dated scan</button>
+      <p class="hint" id="hint"></p>
+    </div>
+  </section>
+
+  <section class="grid" id="today" hidden>
+    <div class="card wide">
+      <div class="card-head">
+        <h2>Today's record</h2>
+        <span class="stamp" id="stamp"></span>
+      </div>
+      <div class="scores" id="scores"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Since baseline</h2></div>
+      <div id="delta" class="delta"></div>
+      <p class="note">Positive means the concern score improved. Small moves are noise — the ledger marks anything under 3 points as flat.</p>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Log a change</h2></div>
+      <form id="change" class="change">
+        <input id="what" placeholder="What changed? e.g. started 0.1% retinol" maxlength="80" />
+        <button class="ghost" type="submit">Add to ledger</button>
+      </form>
+      <ul id="changes" class="changes"></ul>
+    </div>
+  </section>
+
+  <section class="card full" id="historyCard" hidden>
+    <div class="card-head">
+      <h2>History</h2>
+      <div class="actions">
+        <button class="ghost" id="export">Export record</button>
+        <button class="ghost danger" id="reset">Clear</button>
+      </div>
+    </div>
+    <div id="history" class="history"></div>
+  </section>
+</main>
+
+<footer>
+  <span>Skin Ledger is a demonstration. It is not a medical device and does not diagnose anything.</span>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>
