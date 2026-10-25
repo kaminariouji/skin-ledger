@@ -38,6 +38,7 @@
       <div class="stage-scaler" id="stageScaler">
       <div class="stage" id="stage" aria-label="Photo framing area">
         <img id="shot" alt="" draggable="false" hidden />
+        <button type="button" class="shot-clear" id="shotClear" aria-label="Remove this photo" title="Remove this photo" hidden>&times;</button>
         <div class="guide" id="guide" hidden></div>
         <div class="empty" id="empty">
           <strong>Drop a selfie</strong>
@@ -88,6 +89,7 @@
         <button type="button" id="run" class="btn solid" disabled>Run scan</button>
       </div>
 
+      <p class="tier-note" id="tierNote">8 concerns — the quick check. 16 adds per-region detail.</p>
       <div class="progress" id="progress" hidden>
         <div class="progress-bar"><i id="progressFill"></i></div>
         <div class="progress-meta">

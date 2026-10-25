@@ -50,6 +50,10 @@ paintTheme(document.documentElement.getAttribute('data-theme') || 'system');
 /* depth switch */
 function paintTier() {
   document.querySelectorAll('[data-tier]').forEach((b) => b.setAttribute('aria-pressed', String(b.getAttribute('data-tier') === tier)));
+  const note = $('tierNote');
+  if (note) note.textContent = tier === 'hd'
+    ? '16 concerns, with a score for each region of the face. Slower, 22 units per scan.'
+    : '8 concerns — the quick check. 16 adds per-region detail.';
 }
 document.querySelectorAll('[data-tier]').forEach((b) => b.addEventListener('click', () => {
   tier = b.getAttribute('data-tier');
@@ -118,7 +122,7 @@ function loadImage(url) {
   return new Promise((res, rej) => {
     shot.onload = () => {
       loaded = true;
-      shot.hidden = false; guide.hidden = false; empty.hidden = true;
+      shot.hidden = false; guide.hidden = false; empty.hidden = true; $('shotClear').hidden = false;
       zoom = 1; pan = { x: 0, y: 0 }; zoomEl.value = 100; zoomEl.disabled = false;
       $('run').disabled = false; layout(); res();
     };
@@ -165,7 +169,7 @@ async function takeFiles(list) {
 $('pick').addEventListener('click', () => $('file').click());
 $('emptyPick').addEventListener('click', (e) => { e.stopPropagation(); $('file').click(); });
 empty.addEventListener('click', () => $('file').click());
-stage.addEventListener('click', () => { if (!loaded) $('file').click(); });
+stage.addEventListener('click', (e) => { if (e.target.closest('.cam')) return; if (!loaded) $('file').click(); });
 stage.addEventListener('dragover', (e) => { e.preventDefault(); stage.classList.add('dragging'); });
 stage.addEventListener('dragleave', () => stage.classList.remove('dragging'));
 stage.addEventListener('drop', (e) => {
@@ -240,6 +244,17 @@ function stopCam() {
   $("camBadges").hidden = true;
   $("camOval").className = "cam-oval";
 }
+function clearShot() {
+  const cur = shot.getAttribute('src');
+  loaded = false;
+  shot.hidden = true; shot.removeAttribute('src');
+  guide.hidden = true; empty.hidden = false;
+  zoom = 1; pan = { x: 0, y: 0 }; zoomEl.value = 100; zoomEl.disabled = true;
+  $('run').disabled = true; $('shotClear').hidden = true;
+  if (cur) { queue = queue.filter((q) => q.dataUrl !== cur); renderQueue(); }
+  say('');
+}
+$('shotClear').addEventListener('click', (e) => { e.stopPropagation(); clearShot(); });
 async function openCam() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('This browser has no camera API.', 'error'); return; }
   cam.hidden = false;
@@ -325,14 +340,18 @@ $('ghostAlpha').addEventListener('input', () => {
   try { localStorage.setItem(KEY_GHOST, $('ghostAlpha').value); } catch (e) {}
   paintGhost();
 });
-$('camClose').addEventListener('click', stopCam);
+$('camClose').addEventListener('click', (e) => { e.stopPropagation(); stopCam(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('cam').hidden) stopCam(); });
-$('camShot').addEventListener('click', async () => {
+$('camShot').addEventListener('click', async (e) => {
+  e.stopPropagation();
   if (!camVideo.videoWidth) return;
   const size = Math.min(camVideo.videoWidth, camVideo.videoHeight);
   const c = document.createElement('canvas'); c.width = 1024; c.height = 1024;
   const sx = (camVideo.videoWidth - size) / 2, sy = (camVideo.videoHeight - size) / 2;
-  c.getContext('2d').drawImage(camVideo, sx, sy, size, size, 0, 0, 1024, 1024);
+  const g2 = c.getContext('2d');
+  // The preview is mirrored so framing feels natural; mirror the capture the same way so the photo matches what you framed.
+  g2.translate(1024, 0); g2.scale(-1, 1);
+  g2.drawImage(camVideo, sx, sy, size, size, 0, 0, 1024, 1024);
   const url = c.toDataURL('image/jpeg', 0.92);
   stopCam();
   queue.push({ id: uid(), name: 'camera capture', dataUrl: url, status: 'pending', error: '', scores: null });
