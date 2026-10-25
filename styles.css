@@ -3,7 +3,7 @@
   --panel: #fffdf8;
   --ink: #17160f;
   --ink-2: #46433a;
-  --muted: #837e72;
+  --muted: #6b665c;
   --rule: #ded8ca;
   --rule-strong: #c3bcab;
   --accent: #1d5c46;
@@ -91,9 +91,16 @@ h1, h2 { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font
   width: 26px; height: 26px; border: 1px solid var(--ink);
   font: 600 11px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .5px;
 }
-.name { font: 500 13px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .18em; text-transform: uppercase; }
+.name { font: 500 13px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .18em; text-transform: uppercase; white-space: nowrap; }
 .bar-right { display: flex; align-items: center; gap: 12px; }
-.status { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.status { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 560px) {
+  .bar { padding: 12px; gap: 10px; }
+  .bar .rule-dot { display: none; }
+  .bar-right { gap: 8px; }
+  .status { font-size: 10px; }
+  .segmented button { padding: 5px 5px; font-size: 9px; letter-spacing: .03em; }
+}
 .rule-dot { color: var(--rule-strong); }
 
 .segmented {

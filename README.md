@@ -53,7 +53,7 @@ No dependencies. Node 20+.
 
 - Scans and the change log live in the browser's `localStorage` only.
 - A 128×128 JPEG thumbnail is stored; the full-resolution image is not.
-- Nothing is uploaded anywhere except to the YouCam API for the analysis itself.
+- The selfie goes to the YouCam Skin AI API and nowhere else. The one exception is the chat panel: when you ask a question, the dated scores and your change log are sent to a third-party language model so it can draft the answer. No image is ever sent there.
 - `Export record` produces a JSON file you can hand to a dermatologist or import elsewhere.
 
 ## Limitations

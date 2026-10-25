@@ -41,10 +41,11 @@
         <div class="guide" id="guide" hidden></div>
         <div class="empty" id="empty">
           <strong>Drop a selfie</strong>
-          <span>or click to choose a file</span>
+          <span>or click anywhere in this frame</span>
+          <button type="button" class="btn solid" id="emptyPick">Choose a photo</button>
         </div>
 
-        <div class="cam" id="cam" hidden>
+        <div class="cam" id="cam" role="dialog" aria-modal="true" aria-label="Camera framing" hidden>
           <video id="camVideo" autoplay playsinline muted></video>
           <img id="ghost" class="ghost" alt="" hidden />
           <div class="cam-oval"></div>
@@ -149,7 +150,7 @@
         <select id="baseline" class="pick small" aria-label="Baseline scan"></select>
       </div>
       <div id="delta" class="delta"></div>
-      <p class="fine">Positive means the concern score rose. Moves under 3 points are marked flat — the ledger will not invent progress.</p>
+      <p class="fine">Higher is healthier on every row. A move of 3 points or more is real; anything smaller is marked flat, because the ledger will not invent progress.</p>
     </div>
     <div class="panel">
       <div class="panel-head">
@@ -254,7 +255,7 @@
       <button type="submit" class="btn ghost">Ask</button>
     </form>
     <div class="chips" id="chatQuick"></div>
-    <p class="fine">Only the numbers in this ledger are sent — never the photo. It will not diagnose anything.</p>
+    <p class="fine">Only the numbers and your change log are sent, to a third-party language model — never the photo. It will not diagnose anything.</p>
   </section>
 
   <section class="record" id="historyCard" hidden>

@@ -17,7 +17,7 @@ let records = load(KEY_RECORDS, []);
 let changes = load(KEY_CHANGES, []);
 let factors = load(KEY_FACTORS, []);
 let queue = [], zoom = 1, pan = { x: 0, y: 0 }, loaded = false;
-let baselineIdx = 0, autoReframed = false, busy = false, camStream = null, qTimer = null, stageK = 1;
+let baselineIdx = 0, busy = false, camStream = null, qTimer = null, stageK = 1;
 let activeMask = null;
 
 function load(k, f) { try { return JSON.parse(localStorage.getItem(k)) || f; } catch (e) { return f; } }
@@ -87,7 +87,10 @@ const ERROR_TEXT = {
   error_below_min_image_size: 'That photo is too small to analyse. Use a larger image.',
   error_face_not_found: 'No face found in that photo. Try a clear, front-facing shot.',
   error_download_image: 'The upload did not reach the analysis service. Try again.',
-  image_too_small_hd: 'HD needs a photo at least 2048px on the short side. Use a larger image.'
+  image_too_small_hd: 'HD needs a photo at least 2048px on the short side. Use a larger image.',
+  busy: 'An analysis is already running. Wait for it to finish, then try again.',
+  task_pending: 'The service is still working on that scan. Give it a minute before running another one.',
+  upstream_error: 'The analysis service did not answer properly. Try again in a moment.'
 };
 const humanError = (c, body) => (c === 'image_too_small_hd' && body && body.message) ? String(body.message) : (ERROR_TEXT[c] || 'The analysis service rejected that photo. Try a straight-on, well-lit shot with your face filling the circle.');
 
@@ -114,7 +117,7 @@ function cropForTier() { return cropDataUrl(tier === 'hd' ? OUT_HD : OUT); }
 function loadImage(url) {
   return new Promise((res, rej) => {
     shot.onload = () => {
-      loaded = true; autoReframed = false;
+      loaded = true;
       shot.hidden = false; guide.hidden = false; empty.hidden = true;
       zoom = 1; pan = { x: 0, y: 0 }; zoomEl.value = 100; zoomEl.disabled = false;
       $('run').disabled = false; layout(); res();
@@ -160,8 +163,15 @@ async function takeFiles(list) {
   else say(added.length + ' photo' + (added.length > 1 ? 's' : '') + ' queued. Press Scan queue to run them one by one.');
 }
 $('pick').addEventListener('click', () => $('file').click());
+$('emptyPick').addEventListener('click', (e) => { e.stopPropagation(); $('file').click(); });
 empty.addEventListener('click', () => $('file').click());
 stage.addEventListener('click', () => { if (!loaded) $('file').click(); });
+stage.addEventListener('dragover', (e) => { e.preventDefault(); stage.classList.add('dragging'); });
+stage.addEventListener('dragleave', () => stage.classList.remove('dragging'));
+stage.addEventListener('drop', (e) => {
+  e.preventDefault(); stage.classList.remove('dragging');
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) takeFiles(e.dataTransfer.files);
+});
 $('file').addEventListener('change', async (e) => { await takeFiles(e.target.files); e.target.value = ''; });
 zoomEl.addEventListener('input', () => { zoom = Number(zoomEl.value) / 100; layout(); });
 stage.addEventListener('wheel', (e) => {
@@ -290,6 +300,7 @@ $('ghostAlpha').addEventListener('input', () => {
   paintGhost();
 });
 $('camClose').addEventListener('click', stopCam);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('cam').hidden) stopCam(); });
 $('camShot').addEventListener('click', async () => {
   if (!camVideo.videoWidth) return;
   const size = Math.min(camVideo.videoWidth, camVideo.videoHeight);
@@ -326,20 +337,14 @@ function stopProgress() {
 
 /* analysis */
 async function post(image, useTier) {
-  const r = await fetch('/api/analyze', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ image, tier: useTier || 'sd' }) });
+  const cropPx = shot.naturalWidth ? Math.round(STAGE / (baseScale() * zoom)) : 0;
+  const r = await fetch('/api/analyze', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ image, tier: useTier || 'sd', cropPx }) });
   let j = {}; try { j = await r.json(); } catch (e) {}
   return { ok: r.ok, body: j };
 }
 async function analyseFramed(label) {
   startProgress(label);
   let res = await post(cropForTier(), tier);
-  if (!res.ok && res.body && res.body.error === 'error_src_face_too_small' && !autoReframed) {
-    autoReframed = true;
-    progressStage.textContent = 'Reframing';
-    zoom = clamp(zoom * 1.3, 1, 3.2); zoomEl.value = String(Math.round(zoom * 100)); layout();
-    await new Promise((r) => setTimeout(r, 350));
-    res = await post(cropForTier(), tier);
-  }
   if (!res.ok) { const e = new Error(humanError(res.body && res.body.error, res.body)); e.code = res.body && res.body.error; throw e; }
   const scores = {};
   Object.keys(res.body.results || {}).forEach((k) => {
@@ -378,7 +383,7 @@ $('run').addEventListener('click', async () => {
     const framed = cropForTier();
     const out = await analyseFramed();
     await commit(out.scores, out.mock, framed, out.assets, out);
-    say(autoReframed ? 'Face was too small, so I zoomed in and retried. Saved.' : 'Saved. Run another scan after you change something to get a real delta.', 'good');
+    say('Saved. Run another scan after you change something to get a real delta.', 'good');
     $('today').scrollIntoView({ block: 'start' });
   } catch (e) { say(e.message, 'error'); }
   finally { stopProgress(); busy = false; btn.disabled = false; btn.textContent = 'Run scan'; }

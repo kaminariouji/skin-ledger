@@ -1,7 +1,11 @@
 import http from 'node:http';
 import zlib from 'node:zlib';
 import { readFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
+import { extname, join, normalize, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+// Serve only from this folder, never from whatever directory the process was started in.
+const ROOT = fileURLToPath(new URL('.', import.meta.url));
+const STATIC_ALLOW = /^[a-z0-9][a-z0-9._-]*\.(html|js|css|svg|png|jpg|jpeg|webp|mp4|ico)$/i;
 
 const PORT = Number(process.env.PORT || 4173);
 const MOCK = process.env.MOCK === '1' || !process.env.YOUCAM_API_KEY;
@@ -10,13 +14,14 @@ const BASE = process.env.YOUCAM_BASE || 'https://yce-api-01.makeupar.com';
 const ACTIONS = ['wrinkle', 'pore', 'texture', 'acne', 'oiliness', 'redness', 'radiance', 'moisture'];
 const HD_ACTIONS = ['hd_wrinkle', 'hd_pore', 'hd_texture', 'hd_acne', 'hd_redness', 'hd_oiliness', 'hd_moisture', 'hd_radiance', 'hd_firmness', 'hd_dark_circle', 'hd_eye_bag', 'hd_tear_trough', 'hd_droopy_upper_eyelid', 'hd_droopy_lower_eyelid', 'hd_age_spot', 'hd_skin_type'];
 // HD rejects anything under 2048px on the short side; the client upscales when we tell it to.
-const HD_MIN_PX = 2000;
+const HD_MIN_PX = 2048;
 // HD lives on the 2.1 task path; SD stays on 2.0. Same body, different version.
 const SD_TASK_PATH = '/s2s/v2.0/task/skin-analysis';
 const HD_TASK_PATH = '/s2s/v2.1/task/skin-analysis';
 
 const ASSETS = new Map();
 const MAX_ASSETS = 24;
+let inflight = false;
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
 
@@ -26,9 +31,16 @@ function json(res, code, obj) {
   res.end(body);
 }
 
-async function readBody(req) {
+async function readBody(req, limit = 12 * 1024 * 1024) {
+  const declared = Number(req.headers['content-length'] || 0);
+  if (declared && declared > limit) { const e = new Error('body too large'); e.status = 413; throw e; }
   const chunks = [];
-  for await (const c of req) chunks.push(c);
+  let total = 0;
+  for await (const c of req) {
+    total += c.length;
+    if (total > limit) { const e = new Error('body too large'); e.status = 413; throw e; }
+    chunks.push(c);
+  }
   return Buffer.concat(chunks);
 }
 
@@ -40,7 +52,7 @@ async function yce(path, init) {
   const text = await r.text();
   let data = null;
   try { data = JSON.parse(text); } catch {}
-  if (!r.ok) throw new Error('yce ' + r.status + ' ' + text.slice(0, 180));
+  if (!r.ok) { const e = new Error('yce ' + r.status); e.yceStatus = r.status; e.yceBody = text.slice(0, 200); throw e; }
   return data;
 }
 
@@ -152,7 +164,7 @@ async function storeHdAssets(parsed) {
   return { id: files.size ? id : null, image: files.has('resize_image.jpg') ? '/api/asset/' + id + '/resize_image.jpg' : null, masks };
 }
 
-async function analyseOnce(buffer, contentType, actions, taskPath) {
+async function analyseOnce(buffer, contentType, actions, taskPath, tier) {
   const up = await yce('/s2s/v2.0/file', {
     method: 'POST',
     body: JSON.stringify({
@@ -176,7 +188,7 @@ async function analyseOnce(buffer, contentType, actions, taskPath) {
 
   const body = { src_file_id: file.file_id, dst_actions: actions };
   // HD only returns the per-region array when asked for json; the default is a zip.
-  if (String(actions[0] || '').startsWith('hd_')) body.format = 'json';
+  if (tier === 'hd') body.format = 'json';
   const task = await yce(taskPath, {
     method: 'POST',
     body: JSON.stringify(body),
@@ -192,7 +204,7 @@ async function analyseOnce(buffer, contentType, actions, taskPath) {
     if (status === 'success') { done = poll; break; }
     if (status === 'error') { const e = new Error('task failed'); e.code = poll?.data?.error || 'error_unknown'; throw e; }
   }
-  if (!done) throw new Error('task timed out');
+  if (!done) { const e = new Error('task timed out'); e.code = 'task_pending'; e.taskId = taskId; throw e; }
   return { done, taskId };
 }
 
@@ -202,7 +214,7 @@ async function liveAnalysis(buffer, contentType, tier) {
   let attempt = null;
   for (let i = 0; i < 2; i++) {
     try {
-      attempt = await analyseOnce(buffer, contentType, actions, taskPath);
+      attempt = await analyseOnce(buffer, contentType, actions, taskPath, tier);
       break;
     } catch (e) {
       // A failed S3 fetch is infrastructure, not the photo: retry exactly once.
@@ -356,6 +368,8 @@ function localAnswer(brief, question) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
+    // Local-only: reject DNS-rebinding attempts that reach us under another name.
+    if (!/^(127\.0\.0\.1|localhost):\d+$/.test(String(req.headers.host || ''))) return json(res, 403, { error: 'forbidden host' });
 
     if (url.pathname === '/api/health') {
       return json(res, 200, { ok: true, mode: MOCK ? 'mock' : 'live', actions: ACTIONS, tiers: ['sd', 'hd'] });
@@ -378,6 +392,8 @@ const server = http.createServer(async (req, res) => {
       const buffer = Buffer.from(image.slice(image.indexOf(',') + 1), 'base64');
 
       if (tier === 'hd') {
+        const cropPx = Number(payload.cropPx || 0);
+        if (cropPx && cropPx < 900) return json(res, 422, { error: 'image_too_small_hd', message: 'This crop carries only ' + Math.round(cropPx) + 'px of real detail. Use a larger photo or zoom out, then run again.', minSize: 2048 });
         const dim = imageSize(buffer);
         if (dim && Math.min(dim.width, dim.height) < HD_MIN_PX) {
           return json(res, 422, {
@@ -390,7 +406,10 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      const out = await liveAnalysis(buffer, contentType, tier);
+      if (inflight) return json(res, 429, { error: 'busy', message: 'An analysis is already running. Wait for it to finish before starting another one.' });
+      let out;
+      inflight = true;
+      try { out = await liveAnalysis(buffer, contentType, tier); } finally { inflight = false; }
       return json(res, 200, out);
     }
 
@@ -408,7 +427,7 @@ const server = http.createServer(async (req, res) => {
 
     // Ledger analyst. Only numbers travel: never the image.
     if (url.pathname === '/api/chat' && req.method === 'POST') {
-      const raw = await readBody(req);
+      const raw = await readBody(req, 64 * 1024);
       let payload = {};
       try { payload = JSON.parse(raw.toString('utf8')); } catch {}
       const question = String(payload.question || '').slice(0, 400).trim();
@@ -426,18 +445,28 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { answer, engine });
     }
 
-    const p = url.pathname === '/' ? '/index.html' : url.pathname;
-    const file = normalize(join(process.cwd(), p));
-    if (!file.startsWith(process.cwd())) return json(res, 403, { error: 'forbidden' });
+    const rel = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\/+/, '');
+    if (!STATIC_ALLOW.test(rel) || rel === 'server.mjs') return json(res, 404, { error: 'not found' });
+    const file = resolve(ROOT, rel);
+    const inside = relative(ROOT, file);
+    if (!inside || inside.startsWith('..')) return json(res, 404, { error: 'not found' });
     const buf = await readFile(file);
     res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
     res.end(buf);
   } catch (e) {
+    if (e && e.status === 413) return json(res, 413, { error: 'request_too_large', message: 'That upload is larger than 12MB.' });
+    if (e && e.code === 'ENOENT') return json(res, 404, { error: 'not found' });
+    if (e && e.code === 'task_pending') return json(res, 504, { error: 'task_pending', taskId: e.taskId || null, message: 'The analysis is still running upstream. Wait a minute before scanning again; a second scan costs another 22 units.' });
     if (e && e.code === 'error_below_min_image_size') {
       return json(res, 422, { error: 'image_too_small_hd', message: 'HD Skin AI needs at least 2048px on the short side. Upscale the photo and try again.', minSize: 2048 });
     }
+    if (e && e.yceStatus) {
+      console.error('yce ' + e.yceStatus + ' ' + String(e.yceBody || '').slice(0, 120));
+      return json(res, 502, { error: 'upstream_error', retryable: e.yceStatus >= 500 });
+    }
     if (e && e.code) return json(res, 422, { error: e.code, message: 'the analysis service rejected the image' });
-    json(res, 500, { error: String(e.message || e).slice(0, 300) });
+    console.error(String((e && e.stack) || e).slice(0, 300));
+    json(res, 500, { error: 'analysis failed' });
   }
 });
 

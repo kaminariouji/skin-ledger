@@ -35,7 +35,7 @@ A dependency-free Node server proxies the YouCam API so the key never reaches th
 
 The client stores records in `localStorage`, renders deltas, sparklines and the split slider, and recolours each mask into a heatmap ramp on a canvas. A deterministic mock mode lets the interface run without a key.
 
-Two failure modes shaped the UI. The model rejects frames where the face fills less than 60% of the width, so the app has a zoom/pan framing stage and, on `error_src_face_too_small`, zooms 1.3x and retries once by itself. And the analysis worker occasionally cannot fetch the object we just uploaded, so the server retries that specific error once.
+Two failure modes shaped the UI. The model rejects frames where the face fills less than 60% of the width, so the app has a zoom/pan framing stage that tells you exactly how to reframe instead of silently re-billing another scan. And the analysis worker occasionally cannot fetch the object we just uploaded, so the server retries that specific error once.
 
 ## Challenges
 The hard part was not the API call. It was deciding what a score is allowed to mean. Comparing against a population average is easy and misleading; comparing against the user's own baseline is harder but honest. Labelling small deltas as noise cost us the satisfying "you improved 12%" moment and bought credibility instead.
