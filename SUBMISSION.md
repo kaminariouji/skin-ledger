@@ -21,9 +21,10 @@ Skin Ledger turns the YouCam Skin AI API into a longitudinal record:
 ## How we built it
 A dependency-free Node server proxies the YouCam API so the key never reaches the browser:
 
-1. `POST /v2.0/file` uploads the image and returns a `file_id`.
-2. `POST /v2.0/task/skin-analysis` with `src_file_id` and eight `dst_actions` (wrinkle, pore, texture, acne, oiliness, redness, radiance, moisture) returns a `task_id`.
-3. `GET /v2.0/task/skin-analysis/{task_id}` is polled until the task succeeds.
+1. `POST /s2s/v2.0/file` registers the image and returns a `file_id` plus a presigned S3 URL.
+2. `PUT` the same bytes to that presigned URL. Upload is two-step; the task fails with `error_download_image` if this step is skipped.
+3. `POST /s2s/v2.0/task/skin-analysis` with `src_file_id` and eight `dst_actions` (wrinkle, pore, texture, acne, oiliness, redness, radiance, moisture) returns a `task_id`.
+4. `GET /s2s/v2.0/task/skin-analysis/{task_id}` is polled until `task_status` is `success`; the response points at a results ZIP, and `score_info.json` inside it holds the per-concern `ui_score` values.
 
 The client stores records in `localStorage` and renders the delta and history. A deterministic mock mode lets the UI run without a key, which is how the interface was built.
 
@@ -41,11 +42,11 @@ Skin AI is fast and the eight concern scores are stable enough to compare across
 ## Built with
 Node.js, vanilla JavaScript, YouCam Skin AI API (v2.0).
 
-## Demo video script (3 minutes)
-1. 0:00–0:25 — Problem: a single score tells you nothing. Show the empty app.
-2. 0:25–0:55 — Upload a selfie, run the scan, eight concerns appear with a timestamp.
-3. 0:55–1:30 — Show the same user four weeks later: delta against baseline, flat moves labelled flat.
-4. 1:30–2:05 — Log a product change; show it landing next to the dates.
-5. 2:05–2:30 — History view and export.
-6. 2:30–2:55 — Under the hood: the three API calls, key kept server-side, mock mode.
-7. 2:55–3:00 — Close on the one line: the product is the record, not the model call.
+## Demo video (recorded, 62s)
+
+Recorded from the running app against the live API, not from mock mode:
+
+1. 0:00-0:06 - Title.
+2. 0:06-0:42 - End-to-end run: drop a selfie, eight concern scores appear, log a routine change, see the dated history.
+3. 0:42-0:54 - The four API calls, and why the key stays server-side.
+4. 0:54-1:02 - What the record is for: dated deltas, noise labelled as noise.
