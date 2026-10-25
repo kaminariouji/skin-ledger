@@ -4,8 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Longitudinal skin tracking on top of the YouCam Skin AI API",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.mjs",
-    "mock": "MOCK=1 node server.mjs"
+    "mock": "node mock.mjs",
+    "test": "node test.mjs"
   }
 }

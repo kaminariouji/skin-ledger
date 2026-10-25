@@ -25,10 +25,16 @@ function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return t
 function saveRecords() {
   if (save(KEY_RECORDS, records)) return;
   for (let i = 0; i < records.length - 1; i++) delete records[i].img;
-  save(KEY_RECORDS, records);
+  if (!save(KEY_RECORDS, records)) say('Storage is full. Delete an old scan before adding another.', 'error');
+  else say('Storage was full, so older photos were dropped. Scores are kept.', 'error');
 }
 const fmt = (ts) => new Date(ts).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-const day = (ts) => new Date(ts).toLocaleDateString();
+const day = (ts) => {
+  const d = new Date(ts);
+  const base = d.toLocaleDateString();
+  const twin = records.some((r) => r.ts !== ts && new Date(r.ts).toLocaleDateString() === base);
+  return twin ? base + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : base;
+};
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const pretty = (k) => k.replace(/_/g, ' ');
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -59,7 +65,7 @@ document.querySelectorAll('[data-tier]').forEach((b) => b.addEventListener('clic
   tier = b.getAttribute('data-tier');
   try { localStorage.setItem('skinledger.tier', tier); } catch (e) {}
   paintTier();
-  say(tier === 'hd' ? 'HD selected: 16 concerns plus per-region scores, slower and 22 units per scan.' : 'Standard selected: 8 concerns, 16 units per scan.');
+  say(tier === 'hd' ? 'HD selected: 16 concerns plus per-region scores, slower and 22 units per scan.' : 'Standard selected: 8 concerns, 12 units per scan.');
 }));
 paintTier();
 
@@ -168,8 +174,31 @@ async function takeFiles(list) {
 }
 $('pick').addEventListener('click', () => $('file').click());
 $('emptyPick').addEventListener('click', (e) => { e.stopPropagation(); $('file').click(); });
+$('emptyDemo').addEventListener('click', async () => {
+  const btn = $('emptyDemo');
+  btn.disabled = true;
+  try {
+    const r = await fetch('demo.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error('the sample record is unavailable');
+    const d = await r.json();
+    records = d.records || [];
+    changes = d.changes || [];
+    factors = d.factors || [];
+    baselineIdx = 0;
+    save(KEY_RECORDS, records);
+    save(KEY_CHANGES, changes);
+    save(KEY_FACTORS, factors);
+    render();
+    const card = $('compareCard');
+    if (card) try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { card.scrollIntoView(); }
+  } catch (err) {
+    btn.disabled = false;
+    say('Could not load the sample: ' + err.message, 'error');
+  }
+});
+$('emptyCam').addEventListener('click', (e) => { e.stopPropagation(); openCam(); });
 empty.addEventListener('click', () => $('file').click());
-stage.addEventListener('click', (e) => { if (e.target.closest('.cam')) return; if (!loaded) $('file').click(); });
+stage.addEventListener('click', (e) => { if (e.target.closest('button, input, select, label, .cam')) return; if (!loaded) $('file').click(); });
 stage.addEventListener('dragover', (e) => { e.preventDefault(); stage.classList.add('dragging'); });
 stage.addEventListener('dragleave', () => stage.classList.remove('dragging'));
 stage.addEventListener('drop', (e) => {
@@ -187,6 +216,8 @@ stage.addEventListener('wheel', (e) => {
 let drag = null;
 stage.addEventListener('pointerdown', (e) => {
   if (!loaded || busy) return;
+  // Pointer capture retargets the following click to #stage, so the × button never fired.
+  if (e.target.closest('button, input, select, label, .cam')) return;
   drag = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
   stage.classList.add('dragging');
   try { stage.setPointerCapture(e.pointerId); } catch (err) {}
@@ -257,6 +288,7 @@ function clearShot() {
 $('shotClear').addEventListener('click', (e) => { e.stopPropagation(); clearShot(); });
 async function openCam() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('This browser has no camera API.', 'error'); return; }
+  if (camStream) return;
   cam.hidden = false;
   empty.hidden = true;
   camFrames = 0; badStreak = 0; lastSig = -1; stillFrames = 0;
@@ -420,14 +452,23 @@ async function commit(scores, mock, framed, assets, extra) {
   baselineIdx = 0;
   render();
 }
+function markQueueDone(dataUrl, scores) {
+  let hit = false;
+  queue.forEach((q) => {
+    if (dataUrl && q.dataUrl === dataUrl && q.status !== 'done') { q.status = 'done'; q.scores = scores; q.error = ''; hit = true; }
+  });
+  if (hit) renderQueue();
+}
 $('run').addEventListener('click', async () => {
   if (!loaded || busy) return;
   busy = true; const btn = $('run'); btn.disabled = true; btn.textContent = 'Scanning';
   say('Sending the framed square to YouCam Skin AI.');
   try {
     const framed = cropForTier();
+    const cur = shot.getAttribute('src');
     const out = await analyseFramed();
     await commit(out.scores, out.mock, framed, out.assets, out);
+    markQueueDone(cur, out.scores);
     say('Saved. Run another scan after you change something to get a real delta.', 'good');
     $('today').scrollIntoView({ block: 'start' });
   } catch (e) { say(e.message, 'error'); }
@@ -468,7 +509,7 @@ function renderQueue() {
   $('queueRun').disabled = pending === 0 || busy;
   $('queueRun').textContent = pending > 1 ? 'Scan ' + pending + ' photos' : 'Scan queue';
   $('queue').innerHTML = queue.map((q, i) => {
-    const st = q.status === 'done' ? '<span class="qstatus ok">8 scores</span>'
+    const st = q.status === 'done' ? '<span class="qstatus ok">' + Object.keys(q.scores).length + ' scores</span>'
       : q.status === 'error' ? '<span class="qstatus bad">rejected</span>'
       : q.status === 'running' ? '<span class="qstatus run">scanning</span>' : '<span class="qstatus">pending</span>';
     const detail = q.status === 'error' ? '<span class="qerr">' + escapeHtml(q.error) + '</span>'
@@ -497,18 +538,22 @@ async function colorizeMask(url) {
   c.width = img.naturalWidth; c.height = img.naturalHeight;
   const ctx = c.getContext("2d");
   ctx.drawImage(img, 0, 0);
-  const d = ctx.getImageData(0, 0, c.width, c.height);
-  const p = d.data;
-  for (let i = 0; i < p.length; i += 4) {
-    const y = (p[i] + p[i + 1] + p[i + 2]) / 3;
-    const a = Math.min(255, Math.round(y * 3.2));
-    const t = Math.min(1, y / 150);
-    p[i] = 255;
-    p[i + 1] = Math.round(186 - 130 * t);
-    p[i + 2] = Math.round(40 - 14 * t);
-    p[i + 3] = a;
+  // The API ships a plain mask. Map its intensity onto a warm ramp so a weak
+  // reading stays amber and a strong one turns magenta.
+  const data = ctx.getImageData(0, 0, c.width, c.height);
+  const px = data.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const a = px[i + 3] / 255;
+    const lum = (0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]) / 255;
+    const v = Math.max(a, lum);
+    if (v < 0.05) { px[i + 3] = 0; continue; }
+    const t = Math.min(1, (v - 0.05) / 0.95);
+    px[i] = Math.round(255 * (1 - 0.15 * t));
+    px[i + 1] = Math.round(255 * (0.62 - 0.5 * t));
+    px[i + 2] = Math.round(255 * (0.12 + 0.62 * t));
+    px[i + 3] = Math.round(255 * Math.min(1, 0.2 + 0.8 * t));
   }
-  ctx.putImageData(d, 0, 0);
+  ctx.putImageData(data, 0, 0);
   const out = c.toDataURL("image/png");
   maskCache[url] = out;
   return out;
@@ -546,10 +591,12 @@ function render() {
   }
   renderReport();
   renderCompare(); renderAttrib(); renderCorr(); renderHistory();
-  $('changes').innerHTML = changes.slice().reverse().map((c) => '<li>' + fmt(c.ts) + ' \u2014 ' + escapeHtml(c.what) + '</li>').join('');
+  $('changes').innerHTML = changes.length ? changes.slice().reverse().map((c) => '<li>' + fmt(c.ts) + ' \u2014 ' + escapeHtml(c.what) + (c.note ? '<span class=\"chg-note\">' + escapeHtml(c.note) + '</span>' : '') + '</li>').join('') : '<li class="fine">No changes logged yet. Add what you started - the next scan is compared against it.</li>';
 }
 function renderReport() {
   const last = records[records.length - 1];
+  const head = $('recordHeading');
+  if (head && last) head.textContent = new Date(last.ts).toDateString() === new Date().toDateString() ? "Today's record" : 'Record from ' + day(last.ts);
   const has = !!(last && last.regions && last.regions.length);
   $('reportCard').hidden = !has;
   if (!has) return;
@@ -574,7 +621,10 @@ function renderReport() {
 function renderDelta() {
   const last = records[records.length - 1], base = records[baselineIdx] || records[0];
   if (!last || !base) return;
-  if (base.ts === last.ts) { $('delta').innerHTML = '<p class="fine">That is the scan you are looking at. Pick an earlier date.</p>'; return; }
+  if (base.ts === last.ts) {
+    $('delta').innerHTML = '<p class="fine">' + (records.length < 2 ? 'This is your baseline. Run a second scan and this panel shows exactly what moved.' : 'Both sides point at the same scan. Pick an earlier date to compare against.') + '</p>';
+    return;
+  }
   $('delta').innerHTML = Object.keys(last.scores).map((k) => {
     const b = base.scores[k]; if (!Number.isFinite(b)) return '';
     const d = Math.round(last.scores[k] - b);
@@ -645,8 +695,9 @@ function renderAttrib() {
   $('attrib').innerHTML = changes.slice().reverse().map((c) => {
     const before = records.filter((r) => r.ts <= c.ts), after = records.filter((r) => r.ts > c.ts).slice(0, 3);
     const head = '<div class="ahead"><span class="awhat">' + escapeHtml(c.what) + '</span><span class="adate">' + day(c.ts) + '</span></div>';
-    if (!before.length) return '<div class="arow">' + head + '<p class="an">Logged before your first scan.</p></div>';
-    if (!after.length) return '<div class="arow">' + head + '<p class="an">No scan since this change yet.</p></div>';
+    const headNote = c.note ? '<p class="anote">' + escapeHtml(c.note) + '</p>' : '';
+    if (!before.length) return '<div class="arow">' + head + headNote + '<p class="an">Logged before your first scan.</p></div>';
+    if (!after.length) return '<div class="arow">' + head + headNote + '<p class="an">No scan since this change yet.</p></div>';
     const base = before[before.length - 1];
     const chips = Object.keys(base.scores).map((k) => {
       const vals = after.map((r) => r.scores[k]).filter((v) => Number.isFinite(v));
@@ -656,7 +707,7 @@ function renderAttrib() {
       const txt = Math.abs(d) < 3 ? pretty(k) + ' flat' : pretty(k) + ' ' + (d > 0 ? '+' : '\u2212') + Math.abs(d);
       return { d: Math.abs(d), html: '<span class="chip ' + cls + '">' + txt + '</span>' };
     }).filter(Boolean).sort((x, y) => y.d - x.d).map((x) => x.html).join('');
-    return '<div class="arow">' + head + '<div class="chips">' + chips + '</div><p class="an">Average of ' + after.length + ' scan' + (after.length > 1 ? 's' : '') + ' after the change, against ' + day(base.ts) + '.</p></div>';
+    return '<div class="arow">' + head + headNote + '<div class="chips">' + chips + '</div><p class="an">Average of ' + after.length + ' scan' + (after.length > 1 ? 's' : '') + ' after the change, against ' + day(base.ts) + '.</p></div>';
   }).join('');
 }
 function renderHistory() {
@@ -682,7 +733,7 @@ function renderHistory() {
 function renderCorr() {
   const sel = $('corrConcern');
   const keys = records.length ? Object.keys(records[records.length - 1].scores) : [];
-  if (!keys.length) { $('corrChart').innerHTML = ''; return; }
+  if (!keys.length) { $('corrChart').innerHTML = ''; $('corrChart').hidden = true; return; }
   if (!sel.options.length || sel.options.length !== keys.length) {
     sel.innerHTML = keys.map((k) => '<option value="' + k + '">' + pretty(k) + '</option>').join('');
   }
@@ -690,11 +741,14 @@ function renderCorr() {
   const factor = $('corrFactor').value;
   const pts = [];
   records.forEach((r) => {
-    const f = factors.filter((x) => Math.abs(x.ts - r.ts) < 36 * 3600 * 1000).pop();
+    // Nearest factor, not the last one: several logs can sit inside the 36h window.
+    const near = factors.filter((x) => Math.abs(x.ts - r.ts) < 36 * 3600 * 1000).sort((a, b) => Math.abs(a.ts - r.ts) - Math.abs(b.ts - r.ts));
+    const f = near[0];
     if (f && Number.isFinite(f[factor]) && Number.isFinite(r.scores[concern])) pts.push({ t: r.ts, s: r.scores[concern], f: f[factor] });
   });
   if (pts.length < 2) {
     $('corrChart').innerHTML = '';
+    $('corrChart').hidden = true;
     $('corrNote').textContent = 'Log a factor on the same day as a scan. With two matching days the chart appears.';
     return;
   }
@@ -704,6 +758,7 @@ function renderCorr() {
   const fMin = Math.min.apply(null, pts.map((p) => p.f)), fMax = Math.max.apply(null, pts.map((p) => p.f));
   const ys = (v) => H - pad - ((v - sMin) / Math.max(1, sMax - sMin)) * (H - pad * 2);
   const yf = (v) => H - pad - ((v - fMin) / Math.max(0.1, fMax - fMin)) * (H - pad * 2);
+  $('corrChart').hidden = false;
   const lineA = pts.map((p, i) => xs(i) + ',' + ys(p.s)).join(' ');
   const lineB = pts.map((p, i) => xs(i) + ',' + yf(p.f)).join(' ');
   $('corrChart').innerHTML =
@@ -716,7 +771,8 @@ $('corrConcern').addEventListener('change', renderCorr);
 $('corrFactor').addEventListener('change', renderCorr);
 $('factorForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const s = Number($('fSleep').value), w = Number($('fWater').value);
+  const s = $('fSleep').value === '' ? NaN : Number($('fSleep').value);
+  const w = $('fWater').value === '' ? NaN : Number($('fWater').value);
   if (!Number.isFinite(s) && !Number.isFinite(w)) return;
   factors.push({ ts: Date.now(), sleep: Number.isFinite(s) ? s : null, water: Number.isFinite(w) ? w : null });
   save(KEY_FACTORS, factors);
@@ -744,7 +800,8 @@ async function ask(question) {
         question,
         ledger: {
           records: records.slice(-8).map((x) => ({ ts: x.ts, scores: x.scores })),
-          changes: changes.slice(-6).map((x) => ({ ts: x.ts, what: x.what }))
+          changes: changes.slice(-6).map((x) => ({ ts: x.ts, what: x.what, note: x.note || '' })),
+          factors: factors.slice(-8).map((x) => ({ ts: x.ts, sleep: x.sleep, water: x.water }))
         }
       })
     });
@@ -764,7 +821,7 @@ $('chatForm').addEventListener('submit', (e) => {
   $('chatInput').value = '';
   ask(q);
 });
-const QUICK = ['Explain today\u2019s record in plain language', 'Which change is actually real?', 'What should I change next?'];
+const QUICK = ['Explain today\u2019s record in plain language', 'Which change is actually real?', 'What should I change next?', 'Why did acne improve?'];
 $('chatQuick').innerHTML = QUICK.map((q) => '<button type="button" class="chip" data-q="' + escapeHtml(q) + '">' + escapeHtml(q) + '</button>').join('');
 document.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => ask(b.getAttribute('data-q'))));
 
@@ -778,7 +835,8 @@ document.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click',
   links.forEach((link) => link.addEventListener('click', (e) => {
     const el = $(link.getAttribute('data-goto'));
     e.preventDefault();
-    if (!el || el.hidden) return;
+    if (!el) return;
+    if (el.hidden) { say(link.getAttribute('data-goto') === 'compareCard' ? 'Run two scans and this panel opens.' : 'This panel appears after your first scan.', 'error'); return; }
     try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) { el.scrollIntoView(); }
   }));
 
@@ -812,54 +870,222 @@ document.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click',
 
 /* ocr */
 const ACTIVES = ['niacinamide', 'retinol', 'salicylic acid', 'hyaluronic acid', 'ascorbic acid', 'vitamin c', 'glycolic acid', 'azelaic acid', 'ceramide', 'benzoyl peroxide', 'tranexamic acid', 'arbutin', 'lactic acid', 'panthenol', 'squalane', 'peptide', 'zinc oxide', 'urea'];
-$('ocrOpen').addEventListener('click', () => $('ocrFile').click());
+let ocrStream = null;
+let ocrTrack = null;
+let ocrTorch = false;
+async function openOcrCam() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('ocrFile').click(); return; }
+  if (ocrStream) return;
+  $('ocrCam').hidden = false;
+  $('ocrZoom').value = '100'; $('ocrZoomOut').textContent = '1.0\u00d7';
+  try {
+    ocrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false });
+    $('ocrVideo').srcObject = ocrStream;
+    await $('ocrVideo').play().catch(() => {});
+    ocrTrack = ocrStream.getVideoTracks()[0] || null;
+    const caps = (ocrTrack && ocrTrack.getCapabilities) ? ocrTrack.getCapabilities() : {};
+    ocrTorch = false;
+    $('ocrTorch').hidden = !caps.torch;
+    $('ocrTorch').setAttribute('aria-pressed', 'false');
+  } catch (e) {
+    stopOcrCam();
+    say('Camera unavailable: ' + (e.message || e.name) + '. Choose a photo instead.', 'error');
+  }
+}
+function stopOcrCam() {
+  if (ocrStream) ocrStream.getTracks().forEach((t) => t.stop());
+  ocrStream = null; ocrTrack = null; ocrTorch = false;
+  $('ocrVideo').srcObject = null;
+  $('ocrCam').hidden = true;
+}
+async function toggleTorch() {
+  if (!ocrTrack) return;
+  try {
+    ocrTorch = !ocrTorch;
+    await ocrTrack.applyConstraints({ advanced: [{ torch: ocrTorch }] });
+    $('ocrTorch').setAttribute('aria-pressed', String(ocrTorch));
+  } catch (e) { ocrTorch = false; }
+}
+$('ocrZoom').addEventListener('input', () => { $('ocrZoomOut').textContent = (Number($('ocrZoom').value) / 100).toFixed(1) + '\u00d7'; });
+function captureOcr() {
+  const v = $('ocrVideo');
+  if (!v.videoWidth) return;
+  // The preview is object-fit: cover, so grab exactly the rectangle the user sees:
+  // a centred crop whose aspect ratio is the element's, not the sensor's.
+  const box = v.getBoundingClientRect();
+  const z = Math.max(1, Number($('ocrZoom').value) / 100);
+  const vw = v.videoWidth, vh = v.videoHeight;
+  const boxAspect = box.width / Math.max(1, box.height);
+  let cw = vw, ch = vh;
+  if (boxAspect < vw / vh) cw = Math.round(vh * boxAspect); else ch = Math.round(vw / boxAspect);
+  const sw = Math.round(cw / z), sh = Math.round(ch / z);
+  const sx = Math.round((vw - sw) / 2), sy = Math.round((vh - sh) / 2);
+  const target = Math.min(2400, Math.max(1400, Math.round(sw * 1.4)));
+  const c = document.createElement('canvas');
+  c.width = target; c.height = Math.round(target * sh / sw);
+  const ctx = c.getContext('2d');
+  ctx.drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
+
+  const url = c.toDataURL('image/jpeg', 0.94);
+  stopOcrCam();
+  runOcr(url);
+}
+$('ocrOpen').addEventListener('click', openOcrCam);
+$('ocrPick').addEventListener('click', () => $('ocrFile').click());
+$('ocrShot').addEventListener('click', captureOcr);
+$('ocrCancel').addEventListener('click', stopOcrCam);
+$('ocrTorch').addEventListener('click', toggleTorch);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('ocrCam').hidden) stopOcrCam(); });
+
+// Stems tolerate OCR typos ("Methoxycinnamse", "Tocophery!") without full fuzzy search.
+const ACTIVE_PATTERNS = [
+  ['niacinamide', /niacinamid|niasinamid/],
+  ['retinol', /retin(?:ol|al)/],
+  ['salicylic acid', /salicyl|asam salisilat/],
+  ['hyaluronic acid', /hyaluron|asam hialuronat/],
+  ['ascorbic acid', /ascorb|asam askorbat/],
+  ['vitamin c', /vitamin\s*c/],
+  ['glycolic acid', /glycolic|asam glikolat/],
+  ['azelaic acid', /azelaic|asam azelat/],
+  ['ceramide', /ceramid/],
+  ['benzoyl peroxide', /benzoyl|benzoil peroksida/],
+  ['tranexamic acid', /tranexam|asam traneksamat/],
+  ['arbutin', /arbutin/],
+  ['lactic acid', /lactic|asam laktat/],
+  ['panthenol', /panthenol/],
+  ['squalane', /squalan/],
+  ['peptide', /peptid|peptida/],
+  ['zinc oxide', /zinc|seng oksida/],
+  ['titanium dioxide', /titanium|titan dioksida/],
+  ['centella asiatica', /centella/],
+  ['octinoxate', /methoxycinnam|octinoxate/],
+  ['avobenzone', /avobenzone|methoxydibenzoyl/],
+  ['octocrylene', /octocrylene/],
+  ['tocopherol', /tocopher/],
+  ['allantoin', /allantoin/],
+  ['bisabolol', /bisabolol/],
+  ['madecassoside', /madecassosid/],
+  ['adenosine', /adenosin/],
+  ['caffeine', /caffein/],
+  ['urea', /\burea\b/]
+];
+function findActives(text) {
+  const low = text.toLowerCase();
+  const found = [];
+  ACTIVE_PATTERNS.forEach((pair) => {
+    const m = low.match(pair[1]);
+    if (!m) return;
+    const tail = low.slice(m.index + m[0].length, m.index + m[0].length + 30).split(/[,\n]/)[0];
+    const pct = tail.match(/(\d+(?:\.\d+)?)\s*%/);
+    found.push({ name: pair[0], pct: pct ? pct[1] : null });
+  });
+  return found;
+}
+let pendingNote = '';
+async function compressForLabel(dataUrl) {
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = dataUrl; });
+  const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.width * k));
+  c.height = Math.max(1, Math.round(img.height * k));
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+  x.drawImage(img, 0, 0, c.width, c.height);
+  let q = 0.86, out = c.toDataURL('image/jpeg', q);
+  while (out.length > 900000 && q > 0.5) { q -= 0.12; out = c.toDataURL('image/jpeg', q); }
+  return out;
+}
+async function runOcr(dataUrl) {
+  const out = $('ocrOut');
+  pendingNote = '';
+  out.hidden = false;
+  const t0 = Date.now();
+  out.innerHTML = '<h3>Reading the label</h3><p class="raw" id="ocrStep">Sending the photo to the label reader\u2026</p>';
+  const tick = setInterval(() => { const el = $('ocrStep'); if (el) el.textContent = 'Reading\u2026 ' + Math.round((Date.now() - t0) / 1000) + 's. The reader takes about 5s, the model that names the ingredients another 10-25s.'; }, 1000);
+  const shot = '<div class="ocr-shot"><img src="' + dataUrl + '" alt="Captured label" /></div>';
+  const again = '<button type="button" class="btn ghost tiny" id="ocrAgain">Scan again</button>';
+  let text = '', parsed = null;
+  try {
+    const r = await fetch('/api/label', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ image: await compressForLabel(dataUrl) })
+    });
+    let j = null;
+    try { j = await r.json(); } catch {}
+    clearInterval(tick);
+    if (!r.ok) throw new Error((j && (j.message || j.error)) || ('the label reader answered ' + r.status));
+    text = String((j && j.text) || '').trim();
+    parsed = (j && j.parsed) || null;
+    if (!text) throw new Error((j && j.message) || 'The label came back empty.');
+  } catch (err) {
+    clearInterval(tick);
+    pendingNote = '';
+    out.innerHTML = '<h3>Could not read the label</h3><p class="raw">' + escapeHtml(err.message) + '</p>' + shot +
+      '<div class="ocr-actions">' + again + '</div>';
+    $('ocrAgain').addEventListener('click', openOcrCam);
+    return;
+  }
+  const clean = (s) => s.replace(/[^A-Za-z0-9 %+./-]/g, ' ').replace(/\s+/g, ' ').trim();
+  const solvent = /^(water|aqua|eau|aqua\/water)$/i;
+  const listed = (parsed && parsed.ingredients) || [];
+  let found = (listed.length ? listed.map((x) => ({ name: x.name, pct: x.pct != null ? String(x.pct) : null })) : findActives(text))
+    .filter((x) => !solvent.test(String(x.name).trim()));
+  const chipsHtml = (arr) => '<div class="chips" id="ocrChips">' + arr.map((x) => '<span class="chip up">' + escapeHtml(x.name) + (x.pct ? ' ' + x.pct + '%' : '') + '</span>').join('') + '</div>';
+  const noteFor = (arr) => arr.map((x) => x.name + (x.pct ? ' ' + x.pct + '%' : '')).join(', ').slice(0, 240);
+  const product = (parsed && parsed.product) || '';
+  pendingNote = noteFor(found);
+  const lines = text.split('\n').map(clean).filter((s) => s.replace(/[^A-Za-z]/g, '').length >= 6);
+  const suggestion = (product || lines[0] || '').slice(0, 80);
+  const raw = '<details class="ocr-raw"><summary>Text read from the photo (' + text.length + ' chars)</summary><pre>' + escapeHtml(text) + '</pre></details>';
+  const warn = found.length
+    ? 'Every ingredient printed on the label, taken straight from the text. The product name and any spelling repair arrive a moment later.'
+    : 'The text was read but no ingredient list was found in it. Move closer to the list and scan again.';
+  out.innerHTML = '<h3 id="ocrHead">' + escapeHtml(product || (found.length ? 'Composition found' : 'Text read from the label')) + '</h3>' +
+    '<p class="raw">' + warn + '</p>' + shot +
+    '<p class="raw" id="ocrSummary" hidden></p>' + chipsHtml(found) +
+    '<div class="ocr-edit"><label for="ocrText">Product</label><input id="ocrText" maxlength="80" placeholder="Type the product name" value="' + escapeHtml(suggestion) + '" /></div>' +
+    '<p class="ocr-warn" id="ocrWarn" hidden></p>' +
+    '<div class="ocr-actions"><button type="button" class="btn ghost tiny" id="ocrAdd">Add to change log</button>' + again +
+    '<a class="btn ghost tiny" download="label.jpg" href="' + dataUrl + '">Save photo</a></div>' + raw;
+  let dirty = false;
+  $('ocrText').addEventListener('input', () => { dirty = true; });
+  $('ocrAdd').addEventListener('click', () => {
+    const v = $('ocrText').value.trim();
+    if (!v) { const w = $('ocrWarn'); w.textContent = 'Type the product name first, then press Add.'; w.hidden = false; $('ocrText').focus(); return; }
+    changes.push({ ts: Date.now(), what: v.slice(0, 80), ...(pendingNote ? { note: pendingNote } : {}) });
+    save(KEY_CHANGES, changes);
+    pendingNote = '';
+    out.hidden = true;
+    render();
+    say('Logged: ' + v.slice(0, 60), 'good');
+  });
+  // The model only polishes: a title, up to six name repairs, one line of context.
+  fetch('/api/label/enrich', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) })
+    .then((r) => r.json())
+    .then((j) => {
+      if (!j || !j.ok || !j.enrich) return;
+      const e = j.enrich, fixes = e.fixes || {}, keys = Object.keys(fixes);
+      found = found.map((x) => {
+        const hit = keys.find((k) => k.toLowerCase() === x.name.toLowerCase() || x.name.toLowerCase().startsWith(k.toLowerCase()));
+        return hit ? { name: fixes[hit], pct: x.pct } : x;
+      });
+      pendingNote = noteFor(found);
+      const head = $('ocrHead'), chips = $('ocrChips'), sum = $('ocrSummary'), input = $('ocrText');
+      if (head && e.product) head.textContent = e.product;
+      if (chips) chips.outerHTML = chipsHtml(found);
+      if (sum && e.summary) { sum.textContent = 'Notable: ' + e.summary; sum.hidden = false; }
+      if (input && e.product && !dirty) input.value = e.product.slice(0, 80);
+    })
+    .catch(() => {});
+  $('ocrAgain').addEventListener('click', openOcrCam);
+}
 $('ocrFile').addEventListener('change', async (e) => {
   const f = e.target.files && e.target.files[0];
   e.target.value = '';
   if (!f) return;
-  const out = $('ocrOut');
-  out.hidden = false;
-  out.innerHTML = '<h3>Reading label</h3><p class="raw">Loading the OCR engine\u2026 first run downloads about 2 MB.</p>';
-  try {
-    if (!window.Tesseract) {
-      await new Promise((res, rej) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-        s.onload = res; s.onerror = () => rej(new Error('OCR engine could not load'));
-        document.head.appendChild(s);
-      });
-    }
-    const dataUrl = await readFile(f);
-    const res = await window.Tesseract.recognize(dataUrl, 'eng');
-    const text = (res.data && res.data.text) || '';
-    const low = text.toLowerCase();
-    const found = [];
-    ACTIVES.forEach((a) => {
-      const at = low.indexOf(a);
-      if (at < 0) return;
-      // read the percentage that FOLLOWS the name, never the one before it
-      const tail = low.slice(at + a.length, at + a.length + 22);
-      const m = tail.match(/(\d+(?:\.\d+)?)\s*%/);
-      found.push({ name: a, pct: m ? m[1] : null });
-    });
-    if (!found.length) {
-      out.innerHTML = '<h3>No actives found</h3><p class="raw">' + escapeHtml(text.slice(0, 160) || 'The label text was not readable.') + '</p>';
-      return;
-    }
-    out.innerHTML = '<h3>Detected on the label</h3><div class="chips">' +
-      found.map((x) => '<span class="chip up">' + escapeHtml(x.name) + (x.pct ? ' ' + x.pct + '%' : '') + '</span>').join('') +
-      '</div><button type="button" class="btn ghost tiny" id="ocrAdd">Add to change log</button>';
-    $('ocrAdd').addEventListener('click', () => {
-      const label = found.map((x) => x.name + (x.pct ? ' ' + x.pct + '%' : '')).join(', ');
-      $('what').value = ('Started ' + label).slice(0, 80);
-      out.hidden = true;
-      say('Prefilled from the label. Press Add to record it.', 'good');
-    });
-  } catch (err) {
-    out.innerHTML = '<h3>OCR failed</h3><p class="raw">' + escapeHtml(err.message) + '</p>';
-  }
+  runOcr(await readFile(f));
 });
-
 /* misc */
 $('baseline').addEventListener('change', (e) => { baselineIdx = Number(e.target.value); renderDelta(); });
 $('cmpA').addEventListener('change', renderCompare);

@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Skin Ledger — dated, comparable skin records</title>
+  <link rel="icon" href="data:," />
 <script>(function(){try{var t=localStorage.getItem("skinledger.theme")||"system";document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","system");}})();</script>
 <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -41,9 +42,14 @@
         <button type="button" class="shot-clear" id="shotClear" aria-label="Remove this photo" title="Remove this photo" hidden>&times;</button>
         <div class="guide" id="guide" hidden></div>
         <div class="empty" id="empty">
-          <strong>Drop a selfie</strong>
-          <span>or click anywhere in this frame</span>
-          <button type="button" class="btn solid" id="emptyPick">Choose a photo</button>
+          <strong>Add a selfie</strong>
+          <span>Camera keeps the framing steady. A photo works too.</span>
+          <div class="empty-actions">
+            <button type="button" class="btn solid" id="emptyCam">Use camera</button>
+            <button type="button" class="btn ghost" id="emptyPick">Choose a photo</button>
+            <button type="button" class="btn ghost" id="emptyDemo">Load a sample record</button>
+          </div>
+          <span class="fine empty-note">The sample uses four dated scans, five routine changes and four daily logs - no API units.</span>
         </div>
 
         <div class="cam" id="cam" role="dialog" aria-modal="true" aria-label="Camera framing" hidden>
@@ -110,7 +116,7 @@
       </ol>
       <p class="fine">
         The framed square is sent to YouCam Skin AI through this machine's own server.
-        The API key never reaches the browser. Nothing else leaves the machine.
+        The API key never reaches the browser. The selfie leaves this machine only for that call. A product-label photo is sent to OCR.space to be read.
       </p>
     </aside>
   </section>
@@ -129,7 +135,7 @@
 
   <section class="record" id="today" hidden>
     <div class="record-head">
-      <h2>Today's record</h2>
+      <h2 id="recordHeading">Today's record</h2>
       <span class="stamp" id="stamp"></span>
     </div>
     <div class="scores" id="scores"></div>
@@ -157,7 +163,10 @@
     <div class="panel">
       <div class="panel-head">
         <h2>Log a change</h2>
-        <button type="button" class="btn ghost tiny" id="ocrOpen">Scan a label</button>
+        <div class="panel-tools">
+          <button type="button" class="btn ghost tiny" id="ocrOpen">Scan label</button>
+          <button type="button" class="btn ghost tiny" id="ocrPick">Choose photo</button>
+        </div>
       </div>
       <form id="change" class="change" autocomplete="off">
         <input id="what" placeholder="Started 5% niacinamide" maxlength="80" aria-label="What changed" />
@@ -275,8 +284,24 @@
 </main>
 
 <footer class="foot">
-  <span>Skin Ledger is a demonstration built on the YouCam Skin AI API. It is not a medical device and does not diagnose anything.</span>
+  <span>Skin Ledger is a personal skin record built on the YouCam Skin AI API. It is not a medical device and does not diagnose anything.</span>
 </footer>
+
+<div class="ocr-cam" id="ocrCam" hidden>
+  <video id="ocrVideo" autoplay playsinline muted></video>
+  <p class="ocr-cam-hint">Fill the frame with the ingredient list. Hold steady, avoid glare.</p>
+  <div class="ocr-cam-bar">
+    <div class="ocr-zoom">
+      <input type="range" id="ocrZoom" min="100" max="300" step="10" value="100" aria-label="Camera zoom" />
+      <output id="ocrZoomOut">1.0\u00d7</output>
+      <button type="button" class="btn ghost tiny" id="ocrTorch" aria-pressed="false" hidden>Light</button>
+    </div>
+    <div class="ocr-buttons">
+      <button type="button" class="btn solid" id="ocrShot">Capture label</button>
+      <button type="button" class="btn ghost" id="ocrCancel">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <input type="file" id="ocrFile" accept="image/*" hidden aria-label="Choose a product label photo" />
 
