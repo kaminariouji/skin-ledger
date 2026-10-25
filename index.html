@@ -4,77 +4,257 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Skin Ledger — dated, comparable skin records</title>
+<script>(function(){try{var t=localStorage.getItem("skinledger.theme")||"system";document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","system");}})();</script>
 <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-<header class="top">
-  <div class="brand">
-    <span class="dot"></span>
-    <strong>Skin Ledger</strong>
-    <span class="tag">powered by YouCam Skin AI</span>
+<header class="bar">
+  <div class="bar-left">
+    <span class="mark">SL</span>
+    <span class="name">Skin Ledger</span>
   </div>
-  <div class="status" id="status">checking API…</div>
+  <div class="bar-right">
+    <span id="status" class="status">checking API</span>
+    <span class="rule-dot">/</span>
+    <div class="theme" role="group" aria-label="Colour theme">
+      <button type="button" data-theme-set="light">Light</button>
+      <button type="button" data-theme-set="dark">Dark</button>
+      <button type="button" data-theme-set="system">Auto</button>
+    </div>
+  </div>
 </header>
 
 <main>
-  <section class="hero">
-    <h1>Your skin, on the record.</h1>
-    <p class="sub">Most skin apps show you a score and forget it. Skin Ledger keeps every scan dated, comparable and attributable — so you can tell whether the thing you changed actually worked.</p>
-
-    <div class="capture">
-      <label class="drop" id="drop">
-        <input type="file" id="file" accept="image/*" hidden />
-        <span class="drop-title">Drop a selfie, or click to choose</span>
-        <span class="drop-sub">Front-facing, even light, no makeup. Nothing leaves this machine except the image you pick.</span>
-      </label>
-      <div class="preview" id="preview" hidden>
-        <img id="shot" alt="Selected selfie" />
-        <button class="ghost" id="clear">Choose another</button>
-      </div>
-      <button class="primary" id="run" disabled>Run dated scan</button>
-      <p class="hint" id="hint"></p>
-    </div>
+  <section class="intro">
+    <h1>Your skin,<br />on the record.</h1>
+    <p class="lede">
+      A single score tells you nothing. What you want to know is whether the thing you changed
+      actually worked — and that needs a date, a baseline, and the same framing every time.
+    </p>
   </section>
 
-  <section class="grid" id="today" hidden>
-    <div class="card wide">
-      <div class="card-head">
-        <h2>Today's record</h2>
-        <span class="stamp" id="stamp"></span>
+  <section class="capture" id="capture">
+    <div class="stage-col">
+      <div class="stage" id="stage" aria-label="Photo framing area">
+        <img id="shot" alt="" draggable="false" hidden />
+        <div class="guide" id="guide" hidden></div>
+        <div class="empty" id="empty">
+          <strong>Drop a selfie</strong>
+          <span>or click to choose a file</span>
+        </div>
+
+        <div class="cam" id="cam" hidden>
+          <video id="camVideo" autoplay playsinline muted></video>
+          <img id="ghost" class="ghost" alt="" hidden />
+          <div class="cam-oval"></div>
+          <div class="cam-badges" id="camBadges">
+            <span data-b="light">light</span>
+            <span data-b="focus">focus</span>
+            <span data-b="frame">framing</span>
+          </div>
+          <div class="cam-actions">
+            <button type="button" class="btn solid" id="camShot">Capture</button>
+            <button type="button" class="btn ghost" id="camClose">Cancel</button>
+          </div>
+        </div>
+
+        <div class="scan-veil" id="veil" hidden>
+          <div class="sweep"></div>
+          <span class="veil-text" id="veilText">Reading your skin</span>
+        </div>
       </div>
-      <div class="scores" id="scores"></div>
+
+      <input type="file" id="file" accept="image/*" multiple hidden />
+      <div class="controls">
+        <label class="zoom" for="zoom">
+          <span class="zoom-label">Zoom</span>
+          <input type="range" id="zoom" min="100" max="320" value="100" step="1" disabled />
+          <output id="zoomOut" class="zoom-out">1.00×</output>
+        </label>
+        <button type="button" id="pick" class="btn ghost">Choose photo</button>
+        <button type="button" id="camOpen" class="btn ghost">Use camera</button>
+        <button type="button" id="run" class="btn solid" disabled>Run scan</button>
+      </div>
+
+      <div class="progress" id="progress" hidden>
+        <div class="progress-bar"><i id="progressFill"></i></div>
+        <div class="progress-meta">
+          <span id="progressStage">Uploading</span>
+          <span id="progressTime" class="mono">0.0s</span>
+        </div>
+      </div>
+
+      <p class="hint" id="hint" role="status" aria-live="polite"></p>
     </div>
-    <div class="card">
-      <div class="card-head"><h2>Since baseline</h2></div>
+
+    <aside class="notes">
+      <h2>Framing matters</h2>
+      <ol>
+        <li>Fill the circle with your face. Drag to move, scroll or slide to zoom.</li>
+        <li>Face the camera straight on. A turned or tilted head is rejected by the model.</li>
+        <li>Even light, no makeup, same room each time. The comparison is only as good as the repeat.</li>
+      </ol>
+      <p class="fine">
+        The framed square is sent to YouCam Skin AI through this machine's own server.
+        The API key never reaches the browser. Nothing else leaves the machine.
+      </p>
+    </aside>
+  </section>
+
+  <section class="record" id="queueCard" hidden>
+    <div class="record-head">
+      <h2>Scan queue</h2>
+      <div class="actions">
+        <span class="stamp" id="queueCount"></span>
+        <button type="button" class="btn ghost" id="queueClear">Clear queue</button>
+        <button type="button" class="btn solid" id="queueRun">Scan queue</button>
+      </div>
+    </div>
+    <div id="queue" class="qlist"></div>
+  </section>
+
+  <section class="record" id="today" hidden>
+    <div class="record-head">
+      <h2>Today's record</h2>
+      <span class="stamp" id="stamp"></span>
+    </div>
+    <div class="scores" id="scores"></div>
+  </section>
+
+  <section class="split" id="split" hidden>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Since baseline</h2>
+        <select id="baseline" class="pick small" aria-label="Baseline scan"></select>
+      </div>
       <div id="delta" class="delta"></div>
-      <p class="note">Positive means the concern score improved. Small moves are noise — the ledger marks anything under 3 points as flat.</p>
+      <p class="fine">Positive means the concern score rose. Moves under 3 points are marked flat — the ledger will not invent progress.</p>
     </div>
-    <div class="card">
-      <div class="card-head"><h2>Log a change</h2></div>
-      <form id="change" class="change">
-        <input id="what" placeholder="What changed? e.g. started 0.1% retinol" maxlength="80" />
-        <button class="ghost" type="submit">Add to ledger</button>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Log a change</h2>
+        <button type="button" class="btn ghost tiny" id="ocrOpen">Scan a label</button>
+      </div>
+      <form id="change" class="change" autocomplete="off">
+        <input id="what" placeholder="Started 5% niacinamide" maxlength="80" aria-label="What changed" />
+        <button type="submit" class="btn ghost">Add</button>
       </form>
+      <div id="ocrOut" class="ocr" hidden></div>
       <ul id="changes" class="changes"></ul>
     </div>
   </section>
 
-  <section class="card full" id="historyCard" hidden>
-    <div class="card-head">
+  <section class="record" id="mapCard" hidden>
+    <div class="record-head">
+      <h2>Where the model sees it</h2>
+      <span class="stamp">per-concern masks from YouCam Skin AI</span>
+    </div>
+    <div class="map-grid">
+      <div class="map-stage" id="mapStage">
+        <img id="mapBase" alt="" />
+        <img id="mapMask" class="mask" alt="" hidden />
+      </div>
+      <div class="map-side">
+        <div class="chips" id="maskChips"></div>
+        <label class="row">Opacity
+          <input type="range" id="maskOpacity" min="0" max="100" value="55" />
+        </label>
+        <p class="fine" id="maskNote">Pick a concern to overlay the model's own mask. Nothing here is drawn by this app.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="record" id="baCard" hidden>
+    <div class="record-head">
+      <h2>Baseline against today</h2>
+      <span class="stamp" id="baStamp"></span>
+    </div>
+    <div class="ba" id="ba">
+      <img id="baAfter" alt="" />
+      <div class="ba-before" id="baBeforeWrap"><img id="baBefore" alt="" /></div>
+      <div class="ba-handle" id="baHandle"><span></span></div>
+      <span class="ba-tag left">baseline</span>
+      <span class="ba-tag right">today</span>
+    </div>
+  </section>
+
+  <section class="record" id="corrCard" hidden>
+    <div class="record-head">
+      <h2>Daily factors</h2>
+      <span class="stamp">logged by you, not by the model</span>
+    </div>
+    <form id="factorForm" class="change" autocomplete="off">
+      <input id="fSleep" type="number" step="0.5" min="0" max="16" placeholder="Sleep (h)" aria-label="Sleep hours" />
+      <input id="fWater" type="number" step="1" min="0" max="20" placeholder="Water (glasses)" aria-label="Water glasses" />
+      <button type="submit" class="btn ghost">Log today</button>
+    </form>
+    <div class="corr-head">
+      <select id="corrConcern" class="pick small" aria-label="Concern"></select>
+      <select id="corrFactor" class="pick small" aria-label="Factor">
+        <option value="sleep">Sleep</option>
+        <option value="water">Water</option>
+      </select>
+    </div>
+    <svg id="corrChart" class="corr" viewBox="0 0 600 170" preserveAspectRatio="none"></svg>
+    <p class="fine" id="corrNote">Two lines on one time axis. With a handful of days this shows a pattern, not a cause.</p>
+  </section>
+
+  <section class="record" id="compareCard" hidden>
+    <div class="record-head">
+      <h2>Compare two scans</h2>
+      <div class="actions">
+        <select id="cmpA" class="pick small" aria-label="First scan"></select>
+        <span class="vs">against</span>
+        <select id="cmpB" class="pick small" aria-label="Second scan"></select>
+      </div>
+    </div>
+    <div id="compare" class="compare"></div>
+  </section>
+
+  <section class="record" id="attribCard" hidden>
+    <div class="record-head">
+      <h2>What changed, and what followed</h2>
+    </div>
+    <div id="attrib" class="attrib"></div>
+    <p class="fine">
+      Each change is compared with the scan before it and the scans after it. One scan after a change
+      is a hint, not proof — the sample size is printed next to every number.
+    </p>
+  </section>
+
+  <section class="record" id="chatCard">
+    <div class="record-head">
+      <h2>Ask the ledger</h2>
+      <span class="stamp" id="chatEngine"></span>
+    </div>
+    <div class="chat" id="chatLog"></div>
+    <form id="chatForm" class="change" autocomplete="off">
+      <input id="chatInput" placeholder="Why is redness still flat?" maxlength="300" aria-label="Ask the ledger" />
+      <button type="submit" class="btn ghost">Ask</button>
+    </form>
+    <div class="chips" id="chatQuick"></div>
+    <p class="fine">Only the numbers in this ledger are sent — never the photo. It will not diagnose anything.</p>
+  </section>
+
+  <section class="record" id="historyCard" hidden>
+    <div class="record-head">
       <h2>History</h2>
       <div class="actions">
-        <button class="ghost" id="export">Export record</button>
-        <button class="ghost danger" id="reset">Clear</button>
+        <button type="button" class="btn ghost" id="export">Export JSON</button>
+        <button type="button" class="btn ghost" id="csv">Export CSV</button>
+        <button type="button" class="btn ghost" id="print">Print report</button>
+        <button type="button" class="btn ghost danger" id="reset">Clear all</button>
       </div>
     </div>
     <div id="history" class="history"></div>
   </section>
 </main>
 
-<footer>
-  <span>Skin Ledger is a demonstration. It is not a medical device and does not diagnose anything.</span>
+<footer class="foot">
+  <span>Skin Ledger is a demonstration built on the YouCam Skin AI API. It is not a medical device and does not diagnose anything.</span>
 </footer>
 
+<input type="file" id="ocrFile" accept="image/*" hidden />
 <script src="/app.js"></script>
 </body>
 </html>

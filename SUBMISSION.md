@@ -1,4 +1,4 @@
-# Devpost submission draft — YouCam API Skin AI & eCommerce VTO Hackathon
+# Devpost submission — YouCam API Skin AI & eCommerce VTO Hackathon
 
 ## Name
 Skin Ledger
@@ -7,46 +7,54 @@ Skin Ledger
 Your skin, on the record. Dated scans, your own baseline, and a change log that tells you whether the thing you changed actually worked.
 
 ## Inspiration
-Skin-analysis apps are everywhere and almost all of them do the same thing: one photo in, one score out, then everything is forgotten. That makes the only question a user actually cares about unanswerable — *is my routine working?* A score of 68 means nothing without the score from four weeks ago, taken on the same phone, in the same light.
+Skin-analysis apps are everywhere and almost all of them do the same thing: one photo in, one score out, then everything is forgotten. That makes the only question a user actually cares about unanswerable — *is my routine working?* A score of 68 means nothing without the score from four weeks ago, taken on the same phone, in the same light, framed the same way.
 
 ## What it does
 Skin Ledger turns the YouCam Skin AI API into a longitudinal record:
 
-- **Dated scans.** Every analysis is stored with a timestamp and a small thumbnail.
-- **Your baseline, not the population.** Each concern is compared against your own first scan, so device and lighting differences stop masquerading as progress.
+- **Dated scans with a real baseline.** Every analysis is stored with a timestamp. Each concern is compared against a scan you choose, not against a population average, so device and lighting differences stop masquerading as progress.
 - **Noise is labelled.** Moves under 3 points are shown as flat. The app refuses to invent improvement.
-- **A change log.** Log "started 0.1% retinol" and "added SPF 50", and the deltas sit next to the dates, so a change is attributable instead of assumed.
-- **Export.** One JSON file with every record and change, for a dermatologist or another tool.
+- **Heatmap from the model's own masks.** The Skin AI task returns one mask PNG per concern inside the results ZIP. The app renders those masks over the analysed image, so you can see *where* the model sees redness or acne rather than only a number. Nothing is drawn by the app.
+- **Baseline / today split slider.** A draggable divider compares the first scan and the latest side by side, which is the comparison people actually make by eye — except here it is aligned.
+- **Batch scan queue.** Drop several photos at once; they are scanned one by one with per-item status. Rejected frames fail individually and report why.
+- **Live camera with guardrails.** Capture in-app with a translucent ghost of your baseline over the viewfinder, plus live checks for exposure, focus and whether a face is filling the oval. The shutter stays disabled until light and framing pass.
+- **Label OCR.** Photograph a product label and the app reads the actives and their percentages, then prefills the change log. No manual typing of "started 5% niacinamide".
+- **A copilot that reads only your numbers.** Ask "why is redness still flat?" and it answers from your dated scores and change log — never the photo, never a diagnosis.
+- **Daily factors.** Log sleep and water next to your scans and see them on the same time axis. A pattern is not a cause, and the app says so.
 
 ## How we built it
 A dependency-free Node server proxies the YouCam API so the key never reaches the browser:
 
 1. `POST /s2s/v2.0/file` registers the image and returns a `file_id` plus a presigned S3 URL.
-2. `PUT` the same bytes to that presigned URL. Upload is two-step; the task fails with `error_download_image` if this step is skipped.
-3. `POST /s2s/v2.0/task/skin-analysis` with `src_file_id` and eight `dst_actions` (wrinkle, pore, texture, acne, oiliness, redness, radiance, moisture) returns a `task_id`.
-4. `GET /s2s/v2.0/task/skin-analysis/{task_id}` is polled until `task_status` is `success`; the response points at a results ZIP, and `score_info.json` inside it holds the per-concern `ui_score` values.
+2. `PUT` the same bytes to that URL. Upload is two-step; the task fails with `error_download_image` if this is skipped.
+3. `POST /s2s/v2.0/task/skin-analysis` with `src_file_id` and eight `dst_actions` returns a `task_id`.
+4. `GET /s2s/v2.0/task/skin-analysis/{task_id}` is polled until `task_status` is `success`. The result is a ZIP holding `score_info.json` and one mask PNG per concern; the server unzips it, serves the masks as assets, and returns normalised scores.
 
-The client stores records in `localStorage` and renders the delta and history. A deterministic mock mode lets the UI run without a key, which is how the interface was built.
+The client stores records in `localStorage`, renders deltas, sparklines and the split slider, and recolours each mask into a heatmap ramp on a canvas. A deterministic mock mode lets the interface run without a key.
+
+Two failure modes shaped the UI. The model rejects frames where the face fills less than 60% of the width, so the app has a zoom/pan framing stage and, on `error_src_face_too_small`, zooms 1.3x and retries once by itself. And the analysis worker occasionally cannot fetch the object we just uploaded, so the server retries that specific error once.
 
 ## Challenges
 The hard part was not the API call. It was deciding what a score is allowed to mean. Comparing against a population average is easy and misleading; comparing against the user's own baseline is harder but honest. Labelling small deltas as noise cost us the satisfying "you improved 12%" moment and bought credibility instead.
 
+The second challenge was framing. A longitudinal product is only as good as the repeatability of its input, which is why zoom, the ghost overlay and the exposure checks exist at all.
+
 ## What we learned
-Skin AI is fast and the eight concern scores are stable enough to compare across scans when the input conditions are consistent. The value of the product is entirely in the record around the model call.
+Skin AI is fast — roughly five seconds end to end — and the eight concern scores are stable enough to compare across scans when the input conditions are consistent. The masks are the most under-used part of the API: they turn a number into a location.
 
 ## What's next
+- **White-label for brands.** A skincare line embeds the same ledger: customers scan before and after a product, and the brand gets dated, per-concern deltas instead of a before/after photo and a claim. That is a defensible B2B product because the value is the record, not the model call.
 - Routine attribution with more than two data points, so a change can be tested rather than assumed.
-- A retailer mode: a storefront embeds the same record so a customer can see whether a product moved their own numbers, not just a before/after photo.
 - Optional on-device encryption of the local record.
 
 ## Built with
-Node.js, vanilla JavaScript, YouCam Skin AI API (v2.0).
+Node.js, vanilla JavaScript, Canvas, YouCam Skin AI API (v2.0).
 
-## Demo video (recorded, 62s)
-
+## Demo video (recorded, 89s)
 Recorded from the running app against the live API, not from mock mode:
 
-1. 0:00-0:06 - Title.
-2. 0:06-0:42 - End-to-end run: drop a selfie, eight concern scores appear, log a routine change, see the dated history.
-3. 0:42-0:54 - The four API calls, and why the key stays server-side.
-4. 0:54-1:02 - What the record is for: dated deltas, noise labelled as noise.
+1. 0:00-0:06 — Title.
+2. 0:06-0:59 — End to end: queue two photos, scan them, eight scores with sparklines, heatmap masks, the baseline/today split slider, and the copilot answering from the ledger.
+3. 0:59-1:10 — The four API calls and where the masks come from.
+4. 1:10-1:19 — The six features in one frame.
+5. 1:19-1:29 — Why a brand would pay for it.
