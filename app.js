@@ -165,10 +165,12 @@ function stopCam() {
   camVideo.srcObject = null;
   cam.hidden = true;
   ghost.hidden = true;
+  empty.hidden = loaded;
 }
 async function openCam() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('This browser has no camera API.', 'error'); return; }
   cam.hidden = false;
+  empty.hidden = true;
   const base = records[records.length - 1];
   if (base && base.img) { ghost.src = base.img; ghost.hidden = false; }
   try {
@@ -633,10 +635,12 @@ $('ocrFile').addEventListener('change', async (e) => {
     const low = text.toLowerCase();
     const found = [];
     ACTIVES.forEach((a) => {
-      if (low.includes(a)) {
-        const m = low.match(new RegExp('(\\d+(?:\\.\\d+)?)\\s*%[^\\n]{0,40}' + a.replace(/ /g, '\\s+')));
-        found.push({ name: a, pct: m ? m[1] : null });
-      }
+      const at = low.indexOf(a);
+      if (at < 0) return;
+      // read the percentage that FOLLOWS the name, never the one before it
+      const tail = low.slice(at + a.length, at + a.length + 22);
+      const m = tail.match(/(\d+(?:\.\d+)?)\s*%/);
+      found.push({ name: a, pct: m ? m[1] : null });
     });
     if (!found.length) {
       out.innerHTML = '<h3>No actives found</h3><p class="raw">' + escapeHtml(text.slice(0, 160) || 'The label text was not readable.') + '</p>';

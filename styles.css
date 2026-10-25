@@ -423,3 +423,7 @@ input[type="range"]:disabled { opacity: .35; cursor: default; }
 button.chip { cursor: pointer; background: transparent; font: inherit; }
 button.chip:hover { border-color: var(--ink); color: var(--ink); }
 .chip.active { border-color: var(--ink); color: var(--ink); background: var(--paper); }
+
+.cam { z-index: 6; }
+.scan-veil { z-index: 8; }
+.stage .empty { z-index: 1; }
