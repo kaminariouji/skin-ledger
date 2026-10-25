@@ -157,6 +157,37 @@ stage.addEventListener('pointerup', endDrag);
 stage.addEventListener('pointercancel', endDrag);
 
 /* camera */
+const KEY_GHOST = 'skinledger.ghostalpha';
+function ghostBaseline() {
+  for (let i = records.length - 1; i >= 0; i--) if (records[i] && records[i].img) return records[i];
+  return null;
+}
+function paintGhost() {
+  const alpha = clamp(Number($('ghostAlpha').value) || 0, 0, 60) / 100;
+  ghost.style.opacity = String(alpha);
+  ghost.classList.toggle('off', $('ghostToggle').getAttribute('aria-pressed') !== 'true');
+}
+function setupGhost() {
+  const base = ghostBaseline();
+  if (!base) {
+    $('camGhost').hidden = true;
+    ghost.hidden = true;
+    say('No baseline photo yet - this first capture becomes your baseline.');
+    return;
+  }
+  let saved = 30;
+  try {
+    const raw = localStorage.getItem(KEY_GHOST);
+    const v = raw === null ? NaN : Number(raw);
+    if (Number.isFinite(v) && v >= 0) saved = v;
+  } catch (e) {}
+  $('ghostAlpha').value = String(saved);
+  $('ghostMeta').textContent = 'baseline ' + day(base.ts);
+  $('camGhost').hidden = false;
+  ghost.src = base.img;
+  ghost.hidden = false;
+  paintGhost();
+}
 function stopCam() {
   if (qTimer) clearInterval(qTimer);
   qTimer = null;
@@ -171,8 +202,8 @@ async function openCam() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('This browser has no camera API.', 'error'); return; }
   cam.hidden = false;
   empty.hidden = true;
-  const base = records[records.length - 1];
-  if (base && base.img) { ghost.src = base.img; ghost.hidden = false; }
+  try { stage.scrollIntoView({ block: 'center', behavior: 'instant' }); } catch (e) { stage.scrollIntoView(); }
+  setupGhost();
   try {
     camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
     camVideo.srcObject = camStream;
@@ -220,6 +251,15 @@ function setBadge(k, ok, text) {
   el.className = ok ? 'ok' : 'warn';
 }
 $('camOpen').addEventListener('click', openCam);
+$('ghostToggle').addEventListener('click', () => {
+  const b = $('ghostToggle');
+  b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'));
+  paintGhost();
+});
+$('ghostAlpha').addEventListener('input', () => {
+  try { localStorage.setItem(KEY_GHOST, $('ghostAlpha').value); } catch (e) {}
+  paintGhost();
+});
 $('camClose').addEventListener('click', stopCam);
 $('camShot').addEventListener('click', async () => {
   if (!camVideo.videoWidth) return;

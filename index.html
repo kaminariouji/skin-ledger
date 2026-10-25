@@ -52,6 +52,11 @@
             <span data-b="focus">focus</span>
             <span data-b="frame">framing</span>
           </div>
+          <div class="cam-ghost" id="camGhost" hidden>
+            <button type="button" class="cam-ghost-toggle" id="ghostToggle" aria-pressed="true">Ghost</button>
+            <input type="range" id="ghostAlpha" min="0" max="60" value="30" aria-label="Ghost overlay opacity" />
+            <span class="cam-ghost-meta" id="ghostMeta">baseline</span>
+          </div>
           <div class="cam-actions">
             <button type="button" class="btn solid" id="camShot">Capture</button>
             <button type="button" class="btn ghost" id="camClose">Cancel</button>
