@@ -17,7 +17,7 @@ let records = load(KEY_RECORDS, []);
 let changes = load(KEY_CHANGES, []);
 let factors = load(KEY_FACTORS, []);
 let queue = [], zoom = 1, pan = { x: 0, y: 0 }, loaded = false;
-let baselineIdx = 0, autoReframed = false, busy = false, camStream = null, qTimer = null;
+let baselineIdx = 0, autoReframed = false, busy = false, camStream = null, qTimer = null, stageK = 1;
 let activeMask = null;
 
 function load(k, f) { try { return JSON.parse(localStorage.getItem(k)) || f; } catch (e) { return f; } }
@@ -60,6 +60,19 @@ document.querySelectorAll('[data-tier]').forEach((b) => b.addEventListener('clic
 paintTier();
 
 /* api */
+
+/* the framing stage keeps its 440-unit coordinate space; on narrow screens it is scaled, not re-measured, so the crop stays exactly what the user framed */
+function fitStage() {
+  const scaler = $('stageScaler');
+  if (!scaler) return;
+  const w = scaler.clientWidth || STAGE;
+  stageK = Math.min(1, w / STAGE);
+  stage.style.transform = stageK < 1 ? 'scale(' + stageK + ')' : '';
+  scaler.style.height = Math.round(STAGE * stageK) + 'px';
+}
+window.addEventListener('resize', fitStage);
+fitStage();
+
 async function health() {
   try {
     const j = await (await fetch('/api/health')).json();
@@ -166,7 +179,7 @@ stage.addEventListener('pointerdown', (e) => {
 });
 stage.addEventListener('pointermove', (e) => {
   if (!drag) return;
-  pan.x = drag.px + (e.clientX - drag.x); pan.y = drag.py + (e.clientY - drag.y); layout();
+  pan.x = drag.px + (e.clientX - drag.x) / stageK; pan.y = drag.py + (e.clientY - drag.y) / stageK; layout();
 });
 const endDrag = () => { drag = null; stage.classList.remove('dragging'); };
 stage.addEventListener('pointerup', endDrag);
@@ -467,6 +480,7 @@ function render() {
   $('corrCard').hidden = factors.length === 0 && records.length === 0;
   $('attribCard').hidden = changes.length === 0 || records.length === 0;
   $('historyCard').hidden = records.length === 0;
+  $('compareCard').hidden = records.length < 2;
 
   if (last) {
     $('stamp').textContent = fmt(last.ts) + (last.mock ? '  \u00b7  mock scores' : '');

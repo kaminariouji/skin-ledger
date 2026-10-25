@@ -35,6 +35,7 @@
 
   <section class="capture" id="capture">
     <div class="stage-col">
+      <div class="stage-scaler" id="stageScaler">
       <div class="stage" id="stage" aria-label="Photo framing area">
         <img id="shot" alt="" draggable="false" hidden />
         <div class="guide" id="guide" hidden></div>
@@ -69,7 +70,8 @@
         </div>
       </div>
 
-      <input type="file" id="file" accept="image/*" multiple hidden />
+      </div>
+      <input type="file" id="file" accept="image/*" multiple hidden aria-label="Choose photos to scan" />
       <div class="controls">
         <label class="zoom" for="zoom">
           <span class="zoom-label">Zoom</span>
@@ -273,7 +275,7 @@
   <span>Skin Ledger is a demonstration built on the YouCam Skin AI API. It is not a medical device and does not diagnose anything.</span>
 </footer>
 
-<input type="file" id="ocrFile" accept="image/*" hidden />
+<input type="file" id="ocrFile" accept="image/*" hidden aria-label="Choose a product label photo" />
 
 <nav class="quicknav" id="quickNav" aria-label="Section shortcuts">
   <a href="#capture" data-goto="capture">Capture</a>

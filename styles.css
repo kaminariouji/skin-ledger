@@ -127,7 +127,10 @@ main { max-width: 1060px; margin: 0 auto; padding: 56px 32px 96px; }
   .intro h1 { font-size: 44px; }
   main { padding: 40px 20px 72px; }
 }
-.stage-col { display: grid; gap: 16px; }
+.stage-col { display: grid; gap: 16px; min-width: 0; }
+.stage-scaler { width: 100%; max-width: 440px; overflow: hidden; }
+.stage { transform-origin: top left; }
+.stage-scaler .stage { max-width: none; }
 
 .stage {
   position: relative; width: 440px; max-width: 100%; aspect-ratio: 1 / 1; overflow: hidden;
@@ -294,12 +297,12 @@ input[type="range"]:disabled { opacity: .35; cursor: default; }
 /* ---------- history ---------- */
 .history { display: grid; }
 .hrow {
-  display: grid; grid-template-columns: 92px 48px 1fr auto; gap: 16px; align-items: center;
+  display: grid; grid-template-columns: 92px 48px minmax(0, 1fr) auto; gap: 16px; align-items: center;
   padding: 12px 0; border-bottom: 1px solid var(--rule); font-size: 13px;
 }
 .hrow .hdate { color: var(--muted); font-variant-numeric: tabular-nums; }
 .hrow img { width: 48px; height: 48px; object-fit: cover; border: 1px solid var(--rule); }
-.hrow .hsum { color: var(--ink-2); }
+.hrow .hsum { color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
 .hrow .hsum b { color: var(--ink); font-weight: 600; }
 .hrow .hsum .sum-up { color: var(--accent); }
 .hrow .hsum .sum-down { color: var(--bad); }
@@ -412,10 +415,11 @@ input[type="range"]:disabled { opacity: .35; cursor: default; }
 }
 
 /* ---------- overlay map ---------- */
-.map-grid { display: grid; grid-template-columns: 440px 1fr; gap: 32px; align-items: start; }
+.map-grid { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 32px; align-items: start; }
+.map-grid > * { min-width: 0; }
 @media (max-width: 860px) { .map-grid { grid-template-columns: 1fr; } }
 .map-stage {
-  position: relative; width: 440px; max-width: 100%; aspect-ratio: 1 / 1;
+  position: relative; width: 100%; max-width: 440px; aspect-ratio: 1 / 1;
   background: var(--panel); border: 1px solid var(--rule-strong); overflow: hidden;
 }
 .map-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
