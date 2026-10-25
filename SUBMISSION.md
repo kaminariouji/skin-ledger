@@ -68,11 +68,16 @@ Node.js (no dependencies), vanilla JavaScript, Canvas, YouCam Skin AI API v2.0 (
 3. Ask the copilot "why did acne improve?" - it answers from those numbers only.
 4. Press **Scan label** to see the label path, or run a live scan with your own key.
 
-## Demo video (recorded, 89s)
-Recorded from the running app against the live API, not from mock mode:
+## Demo video (98s, recorded from this build)
 
-1. 0:00-0:06 — Title.
-2. 0:06-0:59 — End to end: queue two photos, scan them, eight scores with sparklines, heatmap masks, the baseline/today split slider, and the copilot answering from the ledger.
-3. 0:59-1:10 — The four API calls and where the masks come from.
-4. 1:10-1:19 — The six features in one frame.
-5. 1:19-1:29 — Why a brand would pay for it.
+Recorded against the live API and the shipped UI, not mock mode:
+
+1. 0:00-0:06 - Title.
+2. 0:06-0:25 - Load the sample record, then the baseline/today slider and the per-concern scores.
+3. 0:25-0:33 - What changed, and what followed: each routine change with its composition and the deltas after it.
+4. 0:33-0:38 - Daily factors on the same time axis.
+5. 0:38-0:58 - A label photo becomes a full composition in the change log.
+6. 0:58-1:20 - The copilot answering "why did acne improve?" from the dated numbers only.
+7. 1:20-1:30 - The four YouCam API calls and where the masks come from.
+8. 1:30-1:38 - Closing.
+
