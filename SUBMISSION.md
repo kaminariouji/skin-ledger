@@ -68,16 +68,19 @@ Node.js (no dependencies), vanilla JavaScript, Canvas, YouCam Skin AI API v2.0 (
 3. Ask the copilot "why did acne improve?" - it answers from those numbers only.
 4. Press **Scan label** to see the label path, or run a live scan with your own key.
 
-## Demo video (98s, recorded from this build)
+## Demo video (53s, recorded from this build)
 
-Recorded against the live API and the shipped UI, not mock mode:
+The record shown is the four-week sample loaded with **Load a sample record**, so every judge can reproduce the video without spending a YouCam unit. The label scan runs the real OCR and model path; the server was running against the live API key, and no YouCam units were consumed during recording.
 
 1. 0:00-0:06 - Title.
-2. 0:06-0:25 - Load the sample record, then the baseline/today slider and the per-concern scores.
-3. 0:25-0:33 - What changed, and what followed: each routine change with its composition and the deltas after it.
-4. 0:33-0:38 - Daily factors on the same time axis.
-5. 0:38-0:58 - A label photo becomes a full composition in the change log.
-6. 0:58-1:20 - The copilot answering "why did acne improve?" from the dated numbers only.
-7. 1:20-1:30 - The four YouCam API calls and where the masks come from.
-8. 1:30-1:38 - Closing.
+2. 0:06-0:12 - "Your skin, on the record": the product in one screen.
+3. 0:12-0:17 - Per-concern deltas against your own baseline, not a population average.
+4. 0:17-0:23 - What changed, and what followed: each routine change with its composition, and the deltas after it.
+5. 0:23-0:27 - Daily factors on the same time axis.
+6. 0:27-0:30 - The noise rule: a move under 3 points is marked flat.
+7. 0:30-0:37 - A label photo becomes a full composition, ingredient by ingredient.
+8. 0:37-0:43 - The copilot answering "why did acne improve?" from the dated numbers only.
+9. 0:43-0:49 - How it is built: the four YouCam calls, and where the masks come from.
+10. 0:49-0:53 - Closing.
 
+Captions: `demo.srt`.
