@@ -591,10 +591,10 @@ button.chip:hover { border-color: var(--ink); color: var(--ink); }
 
 .anote { margin: 4px 0 10px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
 
-.empty-note { display: block; margin-top: 10px; text-align: center; max-width: 34ch; }
+
 /* --- empty state: satu baris aksi, sample sebagai link --- */
 .link-btn {
-  margin-top: 12px;
+  margin-top: 14px;
   background: none;
   border: 0;
   padding: 0;
@@ -607,7 +607,7 @@ button.chip:hover { border-color: var(--ink); color: var(--ink); }
 }
 .link-btn:hover { color: var(--ink-2); }
 .link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
-.empty-note { max-width: 38ch; }
+.empty-note { display: block; margin-top: 14px; text-align: center; max-width: none; white-space: nowrap; letter-spacing: .01em; }
 /* sembunyikan tombol pilih di toolbar selama stage masih kosong */
 .capture:has(#empty:not([hidden])) #pick,
 .capture:has(#empty:not([hidden])) #camOpen { display: none; }
