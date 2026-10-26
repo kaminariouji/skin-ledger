@@ -70,7 +70,7 @@ Node.js (no dependencies), vanilla JavaScript, Canvas, YouCam Skin AI API v2.0 (
 
 ## Demo video (58s, recorded from this build)
 
-The opening sequence is a designed title piece, not a screen capture: kinetic type over the product claim, a dated timeline, and the noise floor. Everything from 0:11 onward is the shipped UI. The record shown is the four-week sample loaded with **Load a sample record**, so every judge can reproduce it without spending a YouCam unit; the label scan runs the real OCR and model path, and no YouCam units were consumed during recording.
+Two sequences are designed rather than captured: the opening (0:00-0:11.6) and the ending (0:47.3-0:57.8). Everything between them is the shipped UI. The record shown is the four-week sample loaded with **Load a sample record**, so every judge can reproduce it without spending a YouCam unit; the label scan runs the real OCR and model path, and no YouCam units were consumed during recording.
 
 1. 0:00-0:03.6 - Every skin app gives you a score. Then forgets it.
 2. 0:03.6-0:08.0 - Four dated scans, your own baseline, not an average.
@@ -83,7 +83,7 @@ The opening sequence is a designed title piece, not a screen capture: kinetic ty
 9. 0:32.6-0:35.4 - Log a change.
 10. 0:35.4-0:41.7 - A label photo becomes a full composition, ingredient by ingredient.
 11. 0:41.7-0:47.3 - The copilot answering "why did acne improve?" from the dated numbers only.
-12. 0:47.3-0:53.5 - How it is built: the four YouCam calls, and where the masks come from.
-13. 0:53.5-0:57.7 - Closing.
+12. 0:47.3-0:53.6 - How it is built: the four calls draw in order, the zip that comes back, 10.6s end to end, 12 units standard and 22 HD.
+13. 0:53.6-0:57.8 - The product is the record.
 
 Captions: `demo.srt`.
