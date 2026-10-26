@@ -68,19 +68,22 @@ Node.js (no dependencies), vanilla JavaScript, Canvas, YouCam Skin AI API v2.0 (
 3. Ask the copilot "why did acne improve?" - it answers from those numbers only.
 4. Press **Scan label** to see the label path, or run a live scan with your own key.
 
-## Demo video (53s, recorded from this build)
+## Demo video (58s, recorded from this build)
 
-The record shown is the four-week sample loaded with **Load a sample record**, so every judge can reproduce the video without spending a YouCam unit. The label scan runs the real OCR and model path; the server was running against the live API key, and no YouCam units were consumed during recording.
+The opening sequence is a designed title piece, not a screen capture: kinetic type over the product claim, a dated timeline, and the noise floor. Everything from 0:11 onward is the shipped UI. The record shown is the four-week sample loaded with **Load a sample record**, so every judge can reproduce it without spending a YouCam unit; the label scan runs the real OCR and model path, and no YouCam units were consumed during recording.
 
-1. 0:00-0:06 - Title.
-2. 0:06-0:12 - "Your skin, on the record": the product in one screen.
-3. 0:12-0:17 - Per-concern deltas against your own baseline, not a population average.
-4. 0:17-0:23 - What changed, and what followed: each routine change with its composition, and the deltas after it.
-5. 0:23-0:27 - Daily factors on the same time axis.
-6. 0:27-0:30 - The noise rule: a move under 3 points is marked flat.
-7. 0:30-0:37 - A label photo becomes a full composition, ingredient by ingredient.
-8. 0:37-0:43 - The copilot answering "why did acne improve?" from the dated numbers only.
-9. 0:43-0:49 - How it is built: the four YouCam calls, and where the masks come from.
-10. 0:49-0:53 - Closing.
+1. 0:00-0:03.6 - Every skin app gives you a score. Then forgets it.
+2. 0:03.6-0:08.0 - Four dated scans, your own baseline, not an average.
+3. 0:08.0-0:10.4 - Three points is the noise floor: below it the ledger marks the move flat.
+4. 0:10.4-0:11.6 - Title.
+5. 0:11.6-0:17.5 - The record in the app: the hero, and why framing decides the comparison.
+6. 0:17.5-0:22.6 - Per-concern deltas against your own baseline.
+7. 0:22.6-0:28.6 - What changed, and what followed: each routine change with its composition.
+8. 0:28.6-0:32.6 - Daily factors on the same time axis.
+9. 0:32.6-0:35.4 - Log a change.
+10. 0:35.4-0:41.7 - A label photo becomes a full composition, ingredient by ingredient.
+11. 0:41.7-0:47.3 - The copilot answering "why did acne improve?" from the dated numbers only.
+12. 0:47.3-0:53.5 - How it is built: the four YouCam calls, and where the masks come from.
+13. 0:53.5-0:57.7 - Closing.
 
 Captions: `demo.srt`.

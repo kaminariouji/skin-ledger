@@ -1,48 +1,52 @@
 1
-00:00:00,500 --> 00:00:03,428
+00:00:00,450 --> 00:00:03,378
 Every skin app gives you a score, then forgets
 it.
 
 2
-00:00:06,300 --> 00:00:10,428
+00:00:03,850 --> 00:00:07,978
 Skin Ledger keeps the record: dated scans
 against your own baseline.
 
 3
-00:00:12,200 --> 00:00:15,896
+00:00:08,050 --> 00:00:10,378
+Moves under three points are marked flat.
+
+4
+00:00:12,100 --> 00:00:14,956
+Here is one: four weeks, four scans.
+
+5
+00:00:17,700 --> 00:00:21,396
 Not a population average, so lighting can't
 pass as progress.
 
-4
-00:00:17,300 --> 00:00:22,916
+6
+00:00:22,800 --> 00:00:28,416
 Log a change and it shows what followed. Since
 azelaic acid, acne is up twenty-three.
 
-5
-00:00:23,200 --> 00:00:27,088
+7
+00:00:28,800 --> 00:00:32,688
 Sleep and water on the same axis. A pattern is
 not a cause.
 
-6
-00:00:27,300 --> 00:00:29,628
-Moves under three points are marked flat.
-
-7
-00:00:30,200 --> 00:00:36,896
+8
+00:00:35,200 --> 00:00:41,896
 Point the camera at a label. The ingredients
 are parsed in two seconds, and a model repairs
 what OCR mangles.
 
-8
-00:00:37,200 --> 00:00:41,256
+9
+00:00:42,100 --> 00:00:46,156
 Ask why acne improved. It answers from your
 numbers, never the photo.
 
-9
-00:00:43,200 --> 00:00:48,960
+10
+00:00:47,600 --> 00:00:53,360
 Four calls: register, upload, analyse, poll.
 The masks come back with the result.
 
-10
-00:00:49,500 --> 00:00:52,140
+11
+00:00:53,900 --> 00:00:56,540
 The product isn't the score. It's the record.
