@@ -159,8 +159,9 @@ main { max-width: 1060px; margin: 0 auto; padding: 56px 32px 96px; }
   border-radius: 50%; pointer-events: none;
 }
 
-.controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.zoom { display: flex; align-items: center; gap: 10px; flex: 1 1 200px; min-width: 170px; }
+.controls { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; }
+.controls-right { display: flex; align-items: center; gap: 10px; margin-left: auto; flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-end; }
+.zoom { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; }
 .zoom-label { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 .zoom-out { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--ink-2); min-width: 46px; text-align: right; }
 
@@ -591,3 +592,22 @@ button.chip:hover { border-color: var(--ink); color: var(--ink); }
 .anote { margin: 4px 0 10px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
 
 .empty-note { display: block; margin-top: 10px; text-align: center; max-width: 34ch; }
+/* --- empty state: satu baris aksi, sample sebagai link --- */
+.link-btn {
+  margin-top: 12px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.link-btn:hover { color: var(--ink-2); }
+.link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+.empty-note { max-width: 38ch; }
+/* sembunyikan tombol pilih di toolbar selama stage masih kosong */
+.capture:has(#empty:not([hidden])) #pick,
+.capture:has(#empty:not([hidden])) #camOpen { display: none; }

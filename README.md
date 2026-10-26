@@ -17,6 +17,19 @@ Skin Ledger keeps every scan as a dated record, compares each one against your o
 
 The product is the record, not the model call.
 
+## Demo
+
+[demo.mp4](demo.mp4) — 58 seconds, no narration, the shipped UI end to end: four dated scans,
+the baseline comparison, what changed and what followed, daily factors, a label photo parsed
+into a composition, and the copilot answering from the dated numbers only. Captions in [demo.srt](demo.srt).
+
+The app runs locally with no YouCam units spent:
+
+    npm install
+    npm start          # http://localhost:4173
+
+Set YOUCAM_API_KEY to hit the real API; without it the app runs on the bundled sample record.
+
 ## Screenshots
 
 | | |

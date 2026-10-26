@@ -47,9 +47,9 @@
           <div class="empty-actions">
             <button type="button" class="btn solid" id="emptyCam">Use camera</button>
             <button type="button" class="btn ghost" id="emptyPick">Choose a photo</button>
-            <button type="button" class="btn ghost" id="emptyDemo">Load a sample record</button>
           </div>
-          <span class="fine empty-note">The sample uses four dated scans, five routine changes and four daily logs - no API units.</span>
+          <button type="button" class="link-btn" id="emptyDemo">Or load a sample record</button>
+          <span class="fine empty-note">Four dated scans, five routine changes, four daily logs. No API units.</span>
         </div>
 
         <div class="cam" id="cam" role="dialog" aria-modal="true" aria-label="Camera framing" hidden>
@@ -86,13 +86,15 @@
           <input type="range" id="zoom" min="100" max="320" value="100" step="1" disabled />
           <output id="zoomOut" class="zoom-out">1.00×</output>
         </label>
-        <button type="button" id="pick" class="btn ghost">Choose photo</button>
-        <button type="button" id="camOpen" class="btn ghost">Use camera</button>
-<div class="tier" role="group" aria-label="Analysis depth">
-          <button type="button" data-tier="sd" aria-pressed="true">Standard 8</button>
-          <button type="button" data-tier="hd" aria-pressed="false">HD 16</button>
+        <div class="controls-right">
+          <button type="button" id="pick" class="btn ghost">Choose photo</button>
+          <button type="button" id="camOpen" class="btn ghost">Use camera</button>
+          <div class="tier" role="group" aria-label="Analysis depth">
+            <button type="button" data-tier="sd" aria-pressed="true">Standard 8</button>
+            <button type="button" data-tier="hd" aria-pressed="false">HD 16</button>
+          </div>
+          <button type="button" id="run" class="btn solid" disabled>Run scan</button>
         </div>
-        <button type="button" id="run" class="btn solid" disabled>Run scan</button>
       </div>
 
       <p class="tier-note" id="tierNote">8 concerns — the quick check. 16 adds per-region detail.</p>
